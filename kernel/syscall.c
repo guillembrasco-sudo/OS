@@ -2,6 +2,7 @@
 #include "kernel/syscall.h"
 #include "kernel/kheap.h"
 #include "kernel/panic.h"
+#include <hal/cpu.h>
 
 static syscall_fn_t syscall_table[SYSCALL_MAX] = {0};
 
@@ -20,7 +21,7 @@ static int64_t sys_write_impl(uint64_t fd, uint64_t buf_user, uint64_t len, uint
     if (fd != 1 && fd != 2) return -1; // solo stdout/stderr por ahora
     const char *buf = (const char *)buf_user;
     for (uint64_t i = 0; i < len; i++) {
-        kputchar(buf[i]); // asumo kputchar existente en tu driver de tty
+        arch_console_putc(buf[i]); // Reemplazado kputchar por la abstracción de HAL
     }
     return (int64_t)len;
 }
