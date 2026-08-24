@@ -1,1 +1,10 @@
 md/
+
+kernel.iso
+kernel.bin
+kernel.elf
+
+iso/boot/kernel.bin
+iso/boot/kernel.elf
+
+qemu.log
