@@ -1,5 +1,5 @@
-md/
-build/
+md/*
+build/*
 
 kernel.iso
 kernel.bin

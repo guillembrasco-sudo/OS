@@ -1,3 +1,6 @@
+#include <stdint.h>
+#include <stddef.h>
+
 #include <kernel/kheap.h>
 
 static uintptr_t heap_start;
