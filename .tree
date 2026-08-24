@@ -1,0 +1,133 @@
+my-os/
+├── Makefile                    # Orquestador principal de compilación cruzada y enlazado
+├── Kconfig                     # Configuración modular del núcleo
+├── linker.ld                   # Script del enlazador (secciones físicas y virtuales)
+│
+├── boot/                       # Código de arranque y bootstrap
+│   ├── boot.asm                # Punto de entrada Multiboot2 (Ring 0, modo protegido/long mode)
+│   ├── trampoline.asm          # Código de arranque para núcleos secundarios APs (SMP)
+│   └── header.asm              # Cabeceras del protocolo de arranque (Multiboot/UEFI)
+│
+├── arch/                       # Código fuertemente acoplado a la arquitectura CPU
+│   └── x86_64/
+│       ├── cpu.c               # Inicialización específica del procesador
+│       ├── cpuid.c             # Detección de características avanzadas de la CPU
+│       ├── msr.c               # Lectura/Escritura de Model-Specific Registers
+│       ├── gdt.c               # Configuración de la Global Descriptor Table
+│       ├── idt.c               # Configuración de la Interrupt Descriptor Table
+│       ├── isr.asm             # Manejadores de interrupciones en ensamblador (save/restore state)
+│       ├── trap.c              # Gestor de excepciones del sistema
+│       ├── tss.c               # Task State Segment y stacks de excepción
+│       ├── lapic.c             # Local APIC (timer e interrupciones locales)
+│       ├── ioapic.c            # I/O APIC (enrutamiento de interrupciones de bus)
+│       ├── smp.c               # Inicialización de multinúcleo (IPIs)
+│       ├── context.asm         # Cambio de contexto de registros entre procesos
+│       └── io.h                # Instrucciones de E/S por puerto (inb, outb)
+│
+├── hal/                        # Capa de Abstracción de Hardware (Interfaces neutras)
+│   ├── hal.c                   # Punto de inicialización de la capa HAL
+│   ├── cpu.h                   # Interfaz neutra de control de CPUs
+│   ├── clock.h                 # Interfaz neutra para fuentes de tiempo
+│   ├── block.h                 # Interfaz neutra para dispositivos de bloque
+│   ├── net.h                   # Interfaz neutra para controladores de red
+│   └── display.h               # Interfaz neutra para salida de video
+│
+├── firmware/                   # Interacción con el firmware del sistema
+│   ├── acpi/
+│   │   ├── acpi.c              # Parser del Root System Description Pointer (RSDP)
+│   │   ├── madt.c              # Detección de CPUs y APICs mediante la tabla MADT
+│   │   └── dsdt.c              # Interfaz con la tabla DSDT/SSDT
+│   └── devicetree.c            # Parser de Flattened Device Tree (FDT) para ARM/RISC-V
+│
+├── kernel/                     # Lógica central del sistema operativo
+│   ├── main.c                  # Función de entrada kmain() tras la inicialización básica
+│   ├── sched.c                 # Planificador de tareas (Round Robin / Completely Fair)
+│   ├── process.c               # Creación, terminación y tabla de procesos
+│   ├── kthread.c               # Creación e hilos de ejecución internos del kernel
+│   ├── syscall.c               # Despachador de llamadas al sistema (SYSCALL/SYSENTER)
+│   ├── spinlock.c              # Bloqueos por spinlock (primitivas atómicas para SMP)
+│   ├── mutex.c                 # Bloqueos con suspensión de hilos (Mutexes)
+│   ├── time.c                  # Mantenedor del tiempo real y uptime
+│   ├── timer.c                 # Gestión de timers/callbacks del kernel
+│   ├── signal.c                # Entrega y manejo de señales (POSIX Signals)
+│   ├── panic.c                 # Manejador de errores fatales e impresión de backtrace
+│   └── workqueue.c             # Cola de trabajo diferido para procesamiento de interrupciones
+│
+├── mm/                         # Gestión de memoria virtual y física
+│   ├── pmm.c                   # Asignador de marcos físicos (Buddy Allocator / Bitmap)
+│   ├── vmm.c                   # Gestión de tablas de páginas (PML4, PDPT, PD, PT)
+│   ├── fault.c                 # Manejador de Page Faults (Demand Paging y Copy-On-Write)
+│   ├── vma.c                   # Gestión de áreas de memoria virtual (mmap, brk)
+│   ├── slab.c                  # Allocator de objetos pequeños de tamaño fijo (Slab Allocator)
+│   └── heap.c                  # Asignador dinámico general para el kernel (kmalloc/kfree)
+│
+├── drivers/                    # Modelo de controladores autodescubribles
+│   ├── core/
+│   │   ├── bus.c               # Abstracción y registro de buses
+│   │   ├── device.c            # Árbol jerárquico de dispositivos detectados
+│   │   └── driver.c            # Algoritmo de emparejamiento (Probe & Bind)
+│   ├── bus/
+│   │   ├── pci.c               # Escaneo del espacio de configuración PCI
+│   │   └── pci_msi.c           # Configuración de interrupciones MSI/MSI-X
+│   ├── irq/
+│   │   └── irqdomain.c         # Mapeo de IRQs físicas a descriptores de interrupción
+│   ├── char/
+│   │   ├── mem.c               # Controladores para /dev/null, /dev/zero, /dev/random
+│   │   ├── tty.c               # Subsistema de terminales virtuales
+│   │   └── serial.c            # Driver de puerto serie UART 16550 (logs de depuración)
+│   ├── storage/
+│   │   ├── ahci.c              # Driver SATA AHCI
+│   │   └── nvme.c              # Driver de almacenamiento NVMe por PCIe
+│   ├── display/
+│   │   ├── framebuffer.c       # Manejo de memoria gráfica directa (VESA/GOP)
+│   │   └── vga.c               # Driver VGA en modo texto legacy (0xB8000)
+│   ├── input/
+│   │   ├── keyboard.c          # Controlador de teclado PS/2 e interrupciones
+│   │   └── mouse.c             # Controlador de ratón PS/2
+│   └── timer/
+│       ├── pit.c               # Programmable Interval Timer legacy
+│       └── hpet.c              # High Precision Event Timer
+│
+├── fs/                         # Subsistema de almacenamiento y archivos
+│   ├── vfs.c                   # Virtual File System (operaciones abstractas file_operations)
+│   ├── dcache.c                # Caché de nombres de directorios (Dentry Cache)
+│   ├── namei.c                 # Resolución de rutas de texto a nodos inode
+│   ├── open.c                  # Implementación de llamadas open/close y descriptores
+│   ├── file.c                  # Operaciones de lectura, escritura y posicionamiento (read/write/lseek)
+│   ├── pipe.c                  # Tuberías anónimas para comunicación interproceso
+│   ├── ramfs.c                 # Sistema de archivos en memoria RAM
+│   ├── sysfs.c                 # Exposición de la topología del hardware en /sys
+│   ├── devfs.c                 # Exposición de nodos de dispositivos en /dev
+│   └── ext2.c                  # Implementación del sistema de archivos Ext2 en disco
+│
+├── modules/                    # Carga dinámica de módulos en runtime (LKM)
+│   ├── elf_loader.c            # Parseador y relocalizador de binarios objeto ELF (.ko)
+│   ├── symtab.c                # Tabla de símbolos dinámicos del kernel
+│   └── ksyms.c                 # Exportación explícita de funciones (EXPORT_SYMBOL)
+│
+├── lib/                        # Biblioteca C interna ("Freestanding")
+│   ├── string.c                # Implementación de memcpy, memset, memmove, strlen, strcmp
+│   ├── printf.c                # Formateo de texto e impresión (kprintf, snprintf)
+│   ├── bitmap.c                # Estructura de datos para gestión de mapas de bits
+│   └── ringbuffer.c            # Buffer circular para colas de E/S y terminales
+│
+├── include/                    # Archivos de cabecera (.h) del proyecto
+│   ├── arch/                   # Cabeceras específicas del procesador
+│   ├── hal/                    # Definición de estructuras de la HAL
+│   ├── kernel/                 # Definición de tipos de procesos, IPC y sched
+│   ├── mm/                     # Interfaces de memoria física, virtual y allocators
+│   ├── drivers/                # Definición de estructuras del driver model
+│   ├── fs/                     # Estructuras vfs, inode, file, dentry
+│   └── libc/                   # Tipos independientes requeridos
+│       ├── stdint.h            # uint8_t, uint32_t, uint64_t, uintptr_t
+│       ├── stddef.h            # size_t, NULL, offsetof
+│       ├── stdbool.h           # bool, true, false
+│       └── stdarg.h            # va_list, va_start, va_end
+│
+└── user/                       # Entorno inicial de Espacio de Usuario (Ring 3)
+    ├── ulib/
+    │   ├── crt0.asm            # Runtime C inicial de usuario (invoca main())
+    │   ├── syscalls.asm        # Wrappers en ensamblador para invocar sys_enter/syscall
+    │   └── stdio.c             # Biblioteca estándar mínima para programas de usuario
+    ├── init.c                  # Primer proceso en espacio de usuario (PID 1)
+    └── shell.c                 # Intérprete de comandos de espacio de usuario
