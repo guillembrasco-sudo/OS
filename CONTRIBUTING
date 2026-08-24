@@ -1,0 +1,6 @@
+# Contributing to OS
+¡Gracias por querer ayudar! Para contribuir:
+1. Haz un Fork del proyecto.
+2. Crea una rama para tu mejora (`git checkout -b feature/nueva-mejora`).
+3. Asegúrate de que el código compila usando `make`.
+4. Abre un Pull Request explicando detalladamente tus cambios.
