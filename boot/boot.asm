@@ -2,19 +2,22 @@
 
 %define KERNEL_VMA 0xffffffff80000000
 
+extern _kernel_phys_load_end
+extern _kernel_phys_bss_end
+
 section .multiboot
 align 4
 multiboot_header:
-    dd 0x1BADB002                              ; Magic Number para Multiboot 1
-    dd (1 << 0) | (1 << 1) | (1 << 16)         ; Flags: Align + MemInfo + AOUT Kludge (Bit 16)
+    dd 0x1BADB002                               ; Magic Number para Multiboot 1
+    dd (1 << 0) | (1 << 1) | (1 << 16)          ; Flags: Align + MemInfo + AOUT Kludge (Bit 16)
     dd - (0x1BADB002 + ((1 << 0) | (1 << 1) | (1 << 16))) ; Checksum
 
-    ; Campos obligatorios al activar el AOUT Kludge (Bit 16):
-    dd multiboot_header - KERNEL_VMA           ; header_addr: dirección física de esta cabecera
-    dd 0x00100000                              ; load_addr: dirección física de inicio en RAM
-    dd 0                                       ; load_end_addr
-    dd 0                                       ; bss_end_addr
-    dd start - KERNEL_VMA                      ; entry_addr: dirección física de 'start'
+    ; Campos obligatorios AOUT Kludge (Bit 16):
+    dd multiboot_header - KERNEL_VMA            ; header_addr
+    dd 0x00100000                               ; load_addr
+    dd _kernel_phys_load_end                    ; load_end_addr (Dirección física real)
+    dd _kernel_phys_bss_end                     ; bss_end_addr  (Dirección física real)
+    dd start - KERNEL_VMA                       ; entry_addr
 multiboot_header_end:
 
 section .text
@@ -24,6 +27,21 @@ extern kmain
 
 start:
     cli
+
+    ; 1. Preservar argumentos de Multiboot ANTES de ejecutarse rdtsc
+    mov edi, eax                                ; RDI/EDI = 1er argumento (Multiboot Magic: 0x2BADB002)
+    mov esi, ebx                                ; RSI/ESI = 2do argumento (Puntero físico a multiboot_info)
+
+    push edi
+    push esi
+    mov edi, page_table_l4 - KERNEL_VMA
+    xor eax, eax
+    mov ecx, (4096 * 3) / 4
+    rep stosd
+    pop esi
+    pop edi
+
+    ; 2. Generar semilla KASLR sin perder EAX/EBX
     rdtsc
     mov [boot_kaslr_seed - KERNEL_VMA], eax
     mov [boot_kaslr_seed - KERNEL_VMA + 4], edx
@@ -34,60 +52,63 @@ start:
     ; Cargar GDT en dirección física
     lgdt [gdt64.pointer - KERNEL_VMA]
 
-    ; 1. Configurar PML4: Índice 0 (Identity) e Índice 511 (Higher-Half)
+    ; Configurar PML4: Índice 0 (Identity) e Índice 511 (Higher-Half)
     mov eax, page_table_l4 - KERNEL_VMA
     mov edx, page_table_pdpt - KERNEL_VMA
-    or edx, 0x03                               ; Present + Writable
-    mov [eax], edx                             ; PML4[0] (Identidad durante transición)
-    mov [eax + 511 * 8], edx                   ; PML4[511] (Dirección base 0xFFFFFFFF80000000)
+    or edx, 0x03
+    mov dword [eax], edx         ; PML4[0] lower 32 bits
+    mov dword [eax + 4], 0       ; PML4[0] upper 32 bits
 
-    ; 2. Configurar PDPT: Índice 0 (Identity) e Índice 510 (Higher-Half)
+    mov dword [eax + 511 * 8], edx     ; PML4[511] lower 32 bits
+    mov dword [eax + 511 * 8 + 4], 0 ; PML4[511] upper 32 bits
+
+    ; Configurar PDPT: Índice 0 (Identity) e Índice 510 (Higher-Half)
     mov eax, page_table_pdpt - KERNEL_VMA
     mov edx, page_table_pd - KERNEL_VMA
-    or edx, 0x03                               ; Present + Writable
-    mov [eax], edx                             ; PDPT[0]
-    mov [eax + 510 * 8], edx                   ; PDPT[510]
+    or edx, 0x03                                ; Present + Writable
+    mov dword [eax], edx            ; PDPT[0] lower 32 bits
+    mov dword [eax + 4], 0          ; PDPT[0] upper 32 bits (FIXED)
+    mov dword [eax + 510 * 8], edx  ; PDPT[510] lower 32 bits
+    mov dword [eax + 510 * 8 + 4], 0; PDPT[510] upper 32 bits (FIXED)
 
-    ; 3. Mapear múltiples páginas de 2 MB en la Page Directory (PD)
+    ; Mapear múltiples páginas de 2 MB en la Page Directory (PD)
     mov eax, page_table_pd - KERNEL_VMA
-    mov ebx, 0x00000083                        ; Present + Writable + Huge Page (Bit PS=1)
+    mov ebx, 0x00000083                         ; Present + Writable + Huge Page (PS=1)
     mov ecx, 0
 .map_pd_loop:
     mov [eax + ecx * 8], ebx
-    mov dword [eax + ecx * 8 + 4], 0           ; Limpiar los 32 bits superiores del PCDE
-    add ebx, 0x00200000                        ; Avanzar 2 MB en la dirección física
+    mov dword [eax + ecx * 8 + 4], 0
+    add ebx, 0x00200000
     inc ecx
-    cmp ecx, 8                                 ; 8 entradas = 16 MB mapeados
+    cmp ecx, 512 ; Maps 1 GB (512 * 2 MB)
     jl .map_pd_loop
 
-    ; Habilitar PAE (Physical Address Extension) en CR4
+    ; Habilitar PAE
     mov eax, cr4
-    or eax, (1 << 5)                           ; Bit 5: PAE
-    or eax, (1 << 9) | (1 << 10)               ; Bit 9: OSFXSR, Bit 10: OSXMMEXCPT (SSE)
+    or eax, (1 << 5) | (1 << 9) | (1 << 10) ; Bit 5 = PAE
     mov cr4, eax
 
-    ; Cargar CR3 con la dirección física del PML4
+    ; Cargar CR3
     mov eax, page_table_l4 - KERNEL_VMA
+    and eax, 0xFFFFF000          ; Ensure 4096-byte boundary
     mov cr3, eax
 
-    ; Habilitar Long Mode en MSR IA32_EFER (Bit 8: LME)
+    ; Habilitar Long Mode en MSR IA32_EFER
     mov ecx, 0xc0000080
     rdmsr
     or eax, 1 << 8
     wrmsr
 
-    ; Activar Paginación (Bit 31) y Modo Protegido (Bit 0) en CR0
+    ; Activar Paginación y Modo Protegido
     mov eax, cr0
-    or eax, 1 << 31
-    or eax, 1
+    or eax, (1 << 31) | 1
     mov cr0, eax
 
-    ; Salto lejano a código de 64 bits (en memoria física baja)
+    ; Salto lejano a código de 64 bits
     jmp 0x08:(long_mode_start - KERNEL_VMA)
 
 [bits 64]
 long_mode_start:
-    ; Actualizar selectores de datos de 64 bits
     mov ax, 0x10
     mov ds, ax
     mov es, ax
@@ -95,16 +116,14 @@ long_mode_start:
     mov gs, ax
     mov ss, ax
 
-    ; Transición explícita al espacio de memoria virtual superior (Higher-Half)
     mov rax, higher_half
     jmp rax
 
 higher_half:
-    ; Cargar RSP con la dirección VMA absoluta de 64 bits
     mov rsp, stack_top
     xor rbp, rbp
 
-    ; Invocar el punto de entrada principal del Kernel
+    ; rdi (Magic) y rsi (multiboot_info) se mantienen intactos desde start
     call kmain
 
 .halt:
@@ -117,13 +136,13 @@ align 8
 gdt64:
     dq 0
     dq 0x00af9a000000ffff                      ; Kernel Code 64-bit (CS = 0x08)
-    dq 0x00af92000000ffff                      ; Kernel Data 64-bit (DS = 0x10)
+    dq 0x00cf92000000ffff                      ; Kernel Data 64-bit (DS = 0x10)
 .pointer:
     dw $ - gdt64 - 1
-    dd gdt64 - KERNEL_VMA                      ; 32-bit pointer para lgdt en 32-bit mode
+    dd gdt64 - KERNEL_VMA
 
 section .bss
-align 4096
+align 16
 page_table_l4: resq 512
 page_table_pdpt: resq 512
 page_table_pd: resq 512

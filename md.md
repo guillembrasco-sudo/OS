@@ -1,1 +1,3 @@
 cp kernel.bin iso/boot/kernel.bin && xorriso -as mkisofs -R -b boot/grub/stage2_eltorito -no-emul-boot -boot-load-size 4 -boot-info-table -o kernel.iso iso && /mingw64/bin/qemu-system-x86_64 -cdrom kernel.iso -serial stdio
+
+/mingw64/bin/qemu-system-x86_64 -cdrom kernel.iso -serial stdio -d int,cpu_reset,guest_errors -D qemu.log -no-reboot -no-shutdown

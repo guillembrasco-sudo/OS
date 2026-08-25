@@ -35,11 +35,16 @@ SECTIONS
 		*(.data .data.*)
 	}
 
-	.bss ALIGN(0x1000) : AT(ADDR(.bss) - KERNEL_VMA)
+	/* Fin de segmentos cargables (text + rodata + data) */
+	_kernel_phys_load_end = . - KERNEL_VMA;
+
+	.bss ALIGN(4096) : AT(ADDR(.bss) - KERNEL_VMA)
 	{
-		*(COMMON)
-		*(.bss .bss.*)
+		*(.bss*)
 	}
+
+	/* Fin de sección BSS */
+	_kernel_phys_bss_end = . - KERNEL_VMA;
 
 	/DISCARD/ :
 	{
