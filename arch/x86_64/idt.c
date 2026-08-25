@@ -85,9 +85,5 @@ void idt_init(void) {
 
 // Manejador en C invocado desde el stub en Ensamblador
 void exception_handler(uint64_t vector, uint64_t error_code) {
-    // Evita el Triple Fault congelando la CPU de forma segura
-    __asm__ __volatile__("cli");
-    for (;;) {
-        __asm__ __volatile__("hlt");
-    }
+    panic("Excepcion no manejada: vector=%lu error_code=0x%lx", vector, error_code);
 }

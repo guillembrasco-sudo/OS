@@ -42,6 +42,14 @@ struct mb2_mmap_entry {
     uint32_t reserved;
 } __attribute__((packed));
 
+struct mb1_mmap_entry {
+    uint32_t size;
+    uint64_t addr;
+    uint64_t len;
+    uint32_t type;
+} __attribute__((packed));
+
+
 void pmm_init(uint64_t mmap_addr, uint32_t mmap_len, uint64_t kernel_start, uint64_t kernel_end) {
     // 1. Todo el bitmap arranca "usado" (reservado/0xFF).
     memset(bitmap, 0xFF, sizeof(bitmap));
@@ -69,7 +77,7 @@ void pmm_init(uint64_t mmap_addr, uint32_t mmap_len, uint64_t kernel_start, uint
             }
         }
         // Avanzar a la siguiente entrada (cada entrada de MB2 mmap suele medir 24 bytes)
-        entry = (struct mb2_mmap_entry *)((uint8_t *)entry + 24);
+        entry = (struct mb1_mmap_entry *)((uint8_t *)entry + entry->size + 4);
     }
 
     pmm_total_pages = total_pages;

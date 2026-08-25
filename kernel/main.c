@@ -6,9 +6,10 @@
 #include <drivers/virtio_gpu.h>
 #include <arch/x86_64/idt.h>
 #include <kernel/tss.h>
+#include <mm/pmm.h>
 
 int hal_init(void);
-void pmm_init(void);
+void pmm_init(uint64_t mmap_addr, uint32_t mmap_len, uint64_t kernel_start, uint64_t kernel_end);
 void vmm_init(void);
 void pci_scan(void);
 void sched_init(void);
@@ -19,12 +20,12 @@ void tss_init(uint64_t kernel_stack_top);
 static struct virtio_gpu boot_gpu;
 extern uint8_t stack_top[];
 
-void kmain(void)
+void kmain(uint64_t multiboot_magic, uint64_t multiboot_info_addr)
 {
 	hal_init();
 	tss_init((uint64_t)stack_top);
 	idt_init();
-	pmm_init();
+	pmm_init(mmap_addr, mmap_len, 0x00100000ULL, (uint64_t)(uintptr_t)_kernel_phys_bss_end);
 	vmm_init();
 	kaslr_arch_init();
 	display_early_console_init();
