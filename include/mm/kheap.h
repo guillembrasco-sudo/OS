@@ -12,6 +12,7 @@ typedef struct header {
     size_t size;
     uint8_t is_free;
     struct header *next;
+    struct header *prev;
 } header_t;
 
 void  kheap_init(uintptr_t start_address, size_t initial_size);

@@ -1,7 +1,7 @@
 // kernel/tss.c
 #include "kernel/tss.h"
-#include "arch/x86_64/gdt.c" // asumo gdt_set_tss_descriptor(base, limit) existente o a añadir
-#include <lib/string.c>
+#include "arch/x86_64/gdt.h" // asumo gdt_set_tss_descriptor(base, limit) existente o a añadir
+#include <lib/string.h>
 
 static tss_t tss __attribute__((aligned(16)));
 

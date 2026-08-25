@@ -1,6 +1,6 @@
 // kernel/syscall.c
 #include "kernel/syscall.h"
-#include "kernel/kheap.h"
+#include "mm/kheap.h"
 #include "kernel/panic.h"
 #include <hal/cpu.h>
 

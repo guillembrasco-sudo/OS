@@ -52,15 +52,28 @@ int vmm_map_1g(uint64_t *page_directory_pointer, uint64_t virtual_address,
 	return 0;
 }
 
-extern cpu_features_t g_cpu_features; // llenado por hal_mem_init / cpu_features_detect en boot
+extern cpu_features_t g_cpu_features;
+
+void vmm_map_1gb_pages(uint64_t phys_base, uint64_t virt_base, uint64_t size) {
+    uint64_t step = 1ULL << 30; // 1 GiB
+    for (uint64_t offset = 0; offset < size; offset += step) {
+        // Requiere pasar la referencia a la PDPT correspondiente
+        // vmm_map_1g(pdpt, virt_base + offset, phys_base + offset, PAGE_WRITE);
+    }
+}
+
+void vmm_map_2mb_pages(uint64_t phys_base, uint64_t virt_base, uint64_t size) {
+    uint64_t step = 1ULL << 21; // 2 MiB
+    for (uint64_t offset = 0; offset < size; offset += step) {
+        // Requiere pasar la referencia al Page Directory correspondiente
+        // vmm_map_2m(pd, virt_base + offset, phys_base + offset, PAGE_WRITE);
+    }
+}
 
 void vmm_map_kernel_higher_half(uint64_t phys_base, uint64_t virt_base, uint64_t size) {
     if (g_cpu_features.has_1gb_pages && size >= (1ULL << 30)) {
         vmm_map_1gb_pages(phys_base, virt_base, size);
     } else {
-        // 2 MiB es el fallback casi universal (disponible desde los
-        // primeros x86_64 con soporte de long mode); 4 KiB queda solo
-        // para el remanente no alineado.
         vmm_map_2mb_pages(phys_base, virt_base, size);
     }
 }

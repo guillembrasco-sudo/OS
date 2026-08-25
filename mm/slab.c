@@ -31,7 +31,7 @@ void slab_init(void)
     }
 }
 
-void *kmalloc(size_t size)
+void *slab_alloc(size_t size)
 {
     unsigned cpu = arch_cpu_id() % SLAB_CPU_COUNT;
     struct slab_object *entry;
@@ -45,7 +45,7 @@ void *kmalloc(size_t size)
     return entry;
 }
 
-void kfree(void *address)
+void slab_free(void *address)
 {
     unsigned cpu;
     struct slab_object *entry;
