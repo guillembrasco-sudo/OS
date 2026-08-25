@@ -23,6 +23,7 @@ multiboot_header_end:
 section .text
 global start
 global boot_kaslr_seed
+global stack_top
 extern kmain
 
 start:
@@ -142,7 +143,7 @@ gdt64:
     dd gdt64 - KERNEL_VMA
 
 section .bss
-align 16
+align 4096
 page_table_l4: resq 512
 page_table_pdpt: resq 512
 page_table_pd: resq 512

@@ -5,16 +5,16 @@
 #define PACKED __attribute__((packed))
 
 // Descriptor estándar de 8 bytes (Código y Datos)
-struct gdt_entry {
+struct __attribute__((packed)) {
     uint16_t limit_low;
     uint16_t base_low;
     uint8_t  base_middle;
     uint8_t  access;
     uint8_t  granularity;
     uint8_t  base_high;
-} PACKED;
+} gdt_entry;
 
-struct tss_descriptor_64 {
+struct __attribute__((packed)) {
     uint16_t limit_low;
     uint16_t base_low;
     uint8_t  base_middle;
@@ -23,13 +23,13 @@ struct tss_descriptor_64 {
     uint8_t  base_high;
     uint32_t base_upper32; // Parte alta de 32 bits de la dirección de base
     uint32_t reserved;     // Debe ser 0
-} PACKED;
+} tss_descriptor_64;
 
 // Puntero de la GDT (GDTR) de 10 bytes para 64 bits (dirección de 64 bits)
-struct gdt_ptr {
+struct __attribute__((packed)) {
     uint16_t limit;
     uint64_t base;
-} PACKED;
+} gdt_ptr;
 
 // Definimos espacio para 5 descriptores iniciales
 struct gdt_entry gdt[7];
