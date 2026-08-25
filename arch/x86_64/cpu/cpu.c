@@ -64,11 +64,12 @@ void arch_cpu_relax(void)
 
 void arch_console_putc(char character)
 {
-    if (character == '\n')
+    if (character == '\n') {
+        while ((inb(SERIAL_PORT + 5) & 0x20) == 0) ;
         outb(SERIAL_PORT, '\r');
-    while ((inb(SERIAL_PORT + 5) & 0x20) == 0)
-        ;
-    outb(SERIAL_PORT, (uint8_t)character);
+    }
+    while ((inb(SERIAL_PORT + 5) & 0x20) == 0) ;
+    outb(SERIAL_PORT, character);
     if (character == '\n') {
         vga_position = (uint16_t)(((vga_position / 80) + 1) * 80);
         return;
