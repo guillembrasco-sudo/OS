@@ -1,6 +1,6 @@
 // kernel/panic.c
 #include "kernel/panic.h"
-#include <lib/printf.c>     // asumo que existe kprintf/terminal_write; ajusta al nombre real de tu driver de pantalla
+#include <lib/printf.h>     // asumo que existe kprintf/terminal_write; ajusta al nombre real de tu driver de pantalla
 #include <stdarg.h>
 
 static inline uint64_t read_cr0(void) { uint64_t v; __asm__ volatile("mov %%cr0, %0" : "=r"(v)); return v; }

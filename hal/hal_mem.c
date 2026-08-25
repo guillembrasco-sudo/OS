@@ -1,3 +1,6 @@
+#include <stdint.h>
+#include <stddef.h>
+
 void hal_memcpy(void *dst, const void *src, size_t n) {
     uint8_t *d = dst;
     const uint8_t *s = src;

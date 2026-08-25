@@ -1,14 +1,15 @@
 // mm/pmm.c
-#include "kernel/pmm.h"
+#include "mm/pmm.h"
 #include "kernel/spinlock.h"
 #include "kernel/panic.h"
-#include <string.h>
+#include <lib/string.h>
 
 // Bitmap: 1 bit por página física. 1 = usada/reservada, 0 = libre.
 // Tamaño máximo soportado en este build: 64 GiB físicos (ajustable).
 #define PMM_MAX_MEMORY   (64ULL * 1024 * 1024 * 1024)
 #define PMM_BITMAP_BITS  (PMM_MAX_MEMORY / PMM_PAGE_SIZE)
 #define PMM_BITMAP_WORDS (PMM_BITMAP_BITS / 64)
+#define BITMAP_MAX_PAGES (sizeof(bitmap) * 8)
 
 static uint64_t   bitmap[PMM_BITMAP_WORDS];
 static uint64_t   highest_page       = 0;
@@ -42,45 +43,50 @@ struct mb2_mmap_entry {
 } __attribute__((packed));
 
 void pmm_init(uint64_t mmap_addr, uint32_t mmap_len, uint64_t kernel_start, uint64_t kernel_end) {
-    // 1. Todo el bitmap arranca "usado". Vamos liberando solo lo que el
-    //    firmware reporta como disponible. Esto es más seguro que el
-    //    enfoque inverso: si el parseo del mmap falla o hay un hueco no
-    //    reportado, el fallo es "quedarse sin memoria", no "corromper
-    //    memoria de hardware reservada".
+    // 1. Todo el bitmap arranca "usado" (reservado/0xFF).
     memset(bitmap, 0xFF, sizeof(bitmap));
-
-    struct mb2_mmap_entry *entry = (struct mb2_mmap_entry *)(mmap_addr + 16); // salta el header del tag
+    
+    // Asumimos que mmap_addr apunta al offset de las entradas dentro del tag de MB2 (mmap_addr + 16)
+    // o ajusta según cómo pases la dirección desde el bootloader.
+    struct mb2_mmap_entry *entry = (struct mb2_mmap_entry *)(uintptr_t)(mmap_addr + 16);
     uint8_t *end = (uint8_t *)mmap_addr + mmap_len;
 
+    // Pase único: Recorrer las entradas de la tabla de memoria Multiboot2
     while ((uint8_t *)entry < end) {
-        if (entry->type == 1) { // AVAILABLE
+        if (entry->type == 1) { // 1 = Memoria RAM Disponible
             uint64_t start_page = entry->addr / PMM_PAGE_SIZE;
-            uint64_t page_count  = entry->len  / PMM_PAGE_SIZE;
+            uint64_t page_count = entry->len / PMM_PAGE_SIZE;
 
             for (uint64_t i = 0; i < page_count; i++) {
                 uint64_t page = start_page + i;
                 if (page < PMM_BITMAP_BITS) {
                     bitmap_clear(page);
                     total_pages++;
-                    if (page > highest_page) highest_page = page;
+                    if (page > highest_page) {
+                        highest_page = page;
+                    }
                 }
             }
         }
-        entry = (struct mb2_mmap_entry *)((uint8_t *)entry + 24); // tamaño fijo de este layout
+        // Avanzar a la siguiente entrada (cada entrada de MB2 mmap suele medir 24 bytes)
+        entry = (struct mb2_mmap_entry *)((uint8_t *)entry + 24);
     }
 
-    // 2. Reserva explícita del propio kernel (.text/.data/.bss ya cargados)
-    //    y de la primera página física (null-page guard: nunca se debe
-    //    poder mapear la dirección física 0, protege contra
-    //    desreferencias de puntero nulo que "casualmente" funcionan).
+    pmm_total_pages = total_pages;
+
+    // 2. Proteger las páginas ocupadas por el Kernel y la página 0 (NULL pointer protection)
     uint64_t k_start_page = kernel_start / PMM_PAGE_SIZE;
     uint64_t k_end_page   = (kernel_end + PMM_PAGE_SIZE - 1) / PMM_PAGE_SIZE;
     for (uint64_t p = k_start_page; p <= k_end_page; p++) {
-        if (!bitmap_test(p)) { bitmap_set(p); used_pages++; }
+        if (!bitmap_test(p)) { 
+            bitmap_set(p); 
+            used_pages++; 
+        }
     }
-    if (!bitmap_test(0)) { bitmap_set(0); used_pages++; }
-
-    used_pages += 0; // total_pages ya cuenta solo memoria disponible reportada
+    if (!bitmap_test(0)) { 
+        bitmap_set(0); 
+        used_pages++; 
+    }
 }
 
 uint64_t pmm_alloc_page(void) {
@@ -104,7 +110,7 @@ uint64_t pmm_alloc_page(void) {
 
     spinlock_release(&pmm_lock);
     panic("PMM: sin memoria física disponible (OOM en pmm_alloc_page)");
-    return 0; // no alcanzable, panic no retorna
+    return 0;
 }
 
 uint64_t pmm_alloc_pages(size_t count) {
@@ -134,8 +140,11 @@ uint64_t pmm_alloc_pages(size_t count) {
     }
 
     spinlock_release(&pmm_lock);
-    panic("PMM: no se encontró un bloque físico contiguo suficientemente grande");
     return 0;
+}
+
+uintptr_t pmm_alloc_contiguous(size_t pages) {
+    return (uintptr_t)pmm_alloc_pages(pages);
 }
 
 void pmm_free_page(uint64_t phys_addr) {
@@ -143,20 +152,34 @@ void pmm_free_page(uint64_t phys_addr) {
     spinlock_acquire(&pmm_lock);
     if (bitmap_test(page)) {
         bitmap_clear(page);
-        used_pages--;
+        if (used_pages > 0) used_pages--;
     }
-    // Doble-free silencioso -> no-op. Si quieres detectarlo en debug,
-    // compílalo con PMM_DEBUG y añade un contador de refcount por página
-    // en vez de solo un bit; el bitmap por sí solo no distingue
-    // "libre" de "liberada dos veces".
     spinlock_release(&pmm_lock);
 }
 
 void pmm_free_pages(uint64_t phys_addr, size_t count) {
+    if (phys_addr == 0 || count == 0 || (phys_addr % PMM_PAGE_SIZE) != 0) return;
+
+    spinlock_acquire(&pmm_lock);
+    uint64_t start_page = phys_addr / PMM_PAGE_SIZE;
+
     for (size_t i = 0; i < count; i++) {
-        pmm_free_page(phys_addr + i * PMM_PAGE_SIZE);
+        uint64_t page = start_page + i;
+        if (bitmap_test(page)) {
+            bitmap_clear(page);
+            if (used_pages > 0) used_pages--;
+        }
     }
+    spinlock_release(&pmm_lock);
 }
 
 uint64_t pmm_total_memory(void) { return total_pages * PMM_PAGE_SIZE; }
 uint64_t pmm_free_memory(void)  { return (total_pages - used_pages) * PMM_PAGE_SIZE; }
+
+
+size_t pmm_total_pages = 0;
+uint8_t *pmm_bitmap = NULL;
+
+void pmm_free_contiguous(uintptr_t physical, size_t pages) {
+    pmm_free_pages((uint64_t)physical, pages);
+}
