@@ -75,8 +75,8 @@ void idt_init(void) {
 
     // Configurar las 32 excepciones del procesador (0 a 31)
     for (uint8_t i = 0; i < 32; i++) {
-        uint8_t ist_index = (i == 8) ? 1 : 0;
-        idt_set_gate(i, (uint64_t)isr_stub_table[i], 0x08, 0x8E, ist_index);
+        //uint8_t ist_index = (i == 8) ? 1 : 0;
+        idt_set_gate(i, (uint64_t)isr_stub_table[i], 0x08, 0x8E, 0); // ist_index
     }
 
     // Cargar la IDT usando lidt

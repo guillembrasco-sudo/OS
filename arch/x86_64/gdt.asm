@@ -1,3 +1,5 @@
+[bits 64]
+
 global gdt_flush
 gdt_flush:
     lgdt [rdi]            ; RDI contiene el primer argumento (la dirección de gdtr)

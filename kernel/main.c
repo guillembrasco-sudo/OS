@@ -5,6 +5,7 @@
 #include <fs/devfs.h>
 #include <drivers/virtio_gpu.h>
 #include <arch/x86_64/idt.h>
+#include <kernel/tss.h>
 
 int hal_init(void);
 void pmm_init(void);
@@ -13,12 +14,15 @@ void pci_scan(void);
 void sched_init(void);
 void user_init(void);
 void idt_init(void);
+void tss_init(uint64_t kernel_stack_top);
 
 static struct virtio_gpu boot_gpu;
+extern uint8_t stack_top[];
 
 void kmain(void)
 {
 	hal_init();
+	tss_init((uint64_t)stack_top);
 	idt_init();
 	pmm_init();
 	vmm_init();

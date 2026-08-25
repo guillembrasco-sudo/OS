@@ -37,24 +37,24 @@ void tss_set_kernel_stack(uint64_t stack_top) {
 // Selectores: 0x1B = user code (índice 3, RPL 3) | 0x23 = user data (índice 4, RPL 3)
 void enter_usermode(uint64_t entry_point, uint64_t user_stack_top) {
     __asm__ volatile (
-        "mov $0x23, %%ax\n"
-        "mov %%ax, %%ds\n"
-        "mov %%ax, %%es\n"
-        "mov %%ax, %%fs\n"
-        "mov %%ax, %%gs\n"     // SS se carga vía el frame de iretq, no aquí
+        "mov $0x23, %%r8\n"
+        "mov %%r8, %%ds\n"
+        "mov %%r8, %%es\n"
+        "mov %%r8, %%fs\n"
+        "mov %%r8, %%gs\n"
 
         "pushq $0x23\n"        // SS (user data, RPL 3)
-        "pushq %0\n"            // RSP de usuario
+        "pushq %0\n"           // RSP de usuario
         "pushfq\n"
         "popq %%rax\n"
-        "orq $0x200, %%rax\n"  // fuerza IF=1: interrupciones habilitadas en Ring 3
+        "orq $0x200, %%rax\n"  // IF=1
         "pushq %%rax\n"        // RFLAGS
         "pushq $0x1B\n"        // CS (user code, RPL 3)
-        "pushq %1\n"            // RIP de entrada
+        "pushq %1\n"           // RIP de entrada
         "iretq\n"
         :
         : "r"(user_stack_top), "r"(entry_point)
-        : "rax", "memory"
+        : "rax", "r8", "memory"
     );
     __builtin_unreachable();
 }
