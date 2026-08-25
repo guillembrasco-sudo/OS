@@ -3,7 +3,7 @@ TARGET ?= kernel.elf
 BUILD_DIR ?= build
 ifeq ($(ARCH),x86_64)
 CROSS ?= x86_64-elf-
-ARCH_CFLAGS := -m64 -mno-red-zone -mcmodel=kernel
+ARCH_CFLAGS := -m64 -mno-red-zone -mcmodel=kernel -mno-sse -mno-sse2 -mno-mmx -mno-avx
 else ifeq ($(ARCH),arm64)
 CROSS ?= aarch64-elf-
 ARCH_CFLAGS := -march=armv8-a

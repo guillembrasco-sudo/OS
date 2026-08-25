@@ -18,17 +18,15 @@ static struct virtio_gpu boot_gpu;
 
 void kmain(void)
 {
+	hal_init();
 	idt_init();
-	if (hal_init() != 0)
-		for (;;)
-			;
+	pmm_init();
+	vmm_init();
 	kaslr_arch_init();
 	display_early_console_init();
 	devfs_init();
 	slab_init();
 	rcu_init();
-	pmm_init();
-	vmm_init();
 	pci_scan();
 	if (virtio_gpu_init(&boot_gpu, 0) != 0)
 		display_set_mode(&(struct display_mode){ 80, 25, 0, 0 });
