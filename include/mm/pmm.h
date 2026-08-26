@@ -21,6 +21,7 @@ void     pmm_free_page(uint64_t phys_addr);
 void     pmm_free_pages(uint64_t phys_addr, size_t count);
 uint64_t pmm_total_memory(void);
 uint64_t pmm_free_memory(void);
+uint64_t pmm_highest_address(void);
 
 uintptr_t pmm_alloc_contiguous(size_t pages);
 void      pmm_free_contiguous(uintptr_t physical, size_t pages);

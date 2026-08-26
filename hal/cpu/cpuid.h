@@ -1,6 +1,6 @@
 // hal/cpu/cpuid.c
 #include "hal/cpu_features.h"
-#include <string.h>
+#include <lib/string.h>
 
 static inline void cpuid(uint32_t leaf, uint32_t subleaf, uint32_t *a, uint32_t *b, uint32_t *c, uint32_t *d) {
     __asm__ volatile("cpuid"
@@ -14,7 +14,7 @@ static uint8_t xgetbv_osxsave_ok(void) {
     // estado YMM guardados. Sin esto, ejecutar una instrucción AVX
     // produce #UD aunque CPUID diga que el hardware lo soporta — es el
     // error más común al "detectar" AVX de forma incompleta.
-    uint32_t cr4;
+    uint64_t cr4;
     __asm__ volatile("mov %%cr4, %0" : "=r"(cr4));
     if (!(cr4 & (1 << 18))) return 0; // OSXSAVE no habilitado por el kernel todavía
 

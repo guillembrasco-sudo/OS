@@ -28,39 +28,30 @@ static inline int bitmap_test(uint64_t bit) {
     return (bitmap[bit / 64] >> (bit % 64)) & 1ULL;
 }
 
-// --- Parseo de memory map de Multiboot2 -----------------------------------
-// ASUNCIÓN: mmap_addr apunta al primer tag MULTIBOOT_TAG_TYPE_MMAP (tipo 6)
-// ya localizado por el bootloader/entry.asm y pasado por %rdi/%rbx según tu
-// convención de llamada actual. Si usas Multiboot1, sustituye este parseo
-// por la lectura directa de multiboot_info_t->mmap_addr/mmap_length con
-// entradas multiboot_memory_map_t (formato distinto, sin campo `size` por
-// entrada al principio de cada registro).
-struct mb2_mmap_entry {
+// --- Parseo de memory map de Multiboot1 ------------------------------------
+// boot/boot.asm arranca con la cabecera clásica Multiboot1 (magic 0x1BADB002
+// + AOUT kludge), por lo que las entradas del mmap llegan en el formato
+// "multiboot_memory_map_t": cada entrada empieza con un campo `size` de 32
+// bits que indica cuánto mide el RESTO de la entrada (sin contarse a sí
+// mismo), así que hay que avanzar `entry->size + 4` bytes en cada iteración.
+struct mb1_mmap_entry {
+    uint32_t size;   // tamaño del resto de la entrada (no incluye este campo)
     uint64_t addr;
     uint64_t len;
     uint32_t type;   // 1 = disponible, otros = reservado/ACPI/etc.
-    uint32_t reserved;
 } __attribute__((packed));
-
-struct mb1_mmap_entry {
-    uint32_t size;
-    uint64_t addr;
-    uint64_t len;
-    uint32_t type;
-} __attribute__((packed));
-
 
 void pmm_init(uint64_t mmap_addr, uint32_t mmap_len, uint64_t kernel_start, uint64_t kernel_end) {
     // 1. Todo el bitmap arranca "usado" (reservado/0xFF).
     memset(bitmap, 0xFF, sizeof(bitmap));
-    
-    // Asumimos que mmap_addr apunta al offset de las entradas dentro del tag de MB2 (mmap_addr + 16)
-    // o ajusta según cómo pases la dirección desde el bootloader.
-    struct mb2_mmap_entry *entry = (struct mb2_mmap_entry *)(uintptr_t)(mmap_addr + 16);
-    uint8_t *end = (uint8_t *)mmap_addr + mmap_len;
 
-    // Pase único: Recorrer las entradas de la tabla de memoria Multiboot2
-    while ((uint8_t *)entry < end) {
+    // mmap_addr apunta directamente a la primera entrada Multiboot1
+    // (mb_info->mmap_addr), sin desplazamiento de tag como en MB2.
+    struct mb1_mmap_entry *entry = (struct mb1_mmap_entry *)(uintptr_t)mmap_addr;
+    uint8_t *end = (uint8_t *)(uintptr_t)mmap_addr + mmap_len;
+
+    // Pase único: Recorrer las entradas de la tabla de memoria Multiboot1
+    while ((uint8_t *)entry < end && entry->size > 0) {
         if (entry->type == 1) { // 1 = Memoria RAM Disponible
             uint64_t start_page = entry->addr / PMM_PAGE_SIZE;
             uint64_t page_count = entry->len / PMM_PAGE_SIZE;
@@ -76,7 +67,7 @@ void pmm_init(uint64_t mmap_addr, uint32_t mmap_len, uint64_t kernel_start, uint
                 }
             }
         }
-        // Avanzar a la siguiente entrada (cada entrada de MB2 mmap suele medir 24 bytes)
+        // Avanzar a la siguiente entrada: el campo `size` no se cuenta a sí mismo.
         entry = (struct mb1_mmap_entry *)((uint8_t *)entry + entry->size + 4);
     }
 
@@ -183,6 +174,10 @@ void pmm_free_pages(uint64_t phys_addr, size_t count) {
 
 uint64_t pmm_total_memory(void) { return total_pages * PMM_PAGE_SIZE; }
 uint64_t pmm_free_memory(void)  { return (total_pages - used_pages) * PMM_PAGE_SIZE; }
+
+// Byte físico más alto visto en el mapa de memoria (redondeado a página).
+// Lo usa paging_init() para saber cuánta RAM cubrir con el mapa directo.
+uint64_t pmm_highest_address(void) { return (highest_page + 1) * PMM_PAGE_SIZE; }
 
 
 size_t pmm_total_pages = 0;
