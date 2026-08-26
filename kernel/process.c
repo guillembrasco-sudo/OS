@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include <kernel/process.h>
+#include <kernel/tss.h>
 #include <arch/paging.h>
 #include <mm/pmm.h>
 

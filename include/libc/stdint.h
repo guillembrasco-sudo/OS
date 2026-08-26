@@ -13,5 +13,7 @@ typedef unsigned long long uintptr_t;
 typedef long long intptr_t;
 
 #define UINT64_MAX 18446744073709551615ULL
+#define UINT32_MAX 4294967295U
+#define SIZE_MAX __SIZE_MAX__
 
 #endif

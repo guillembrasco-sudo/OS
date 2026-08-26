@@ -62,6 +62,8 @@ static struct {
 	uint32_t cursor_x;
 	uint32_t cursor_y;
 	int ready;
+	int32_t mouse_cursor_x;
+	int32_t mouse_cursor_y;
 } framebuffer;
 
 static const uint8_t font_digits[10][7] = {
@@ -207,6 +209,106 @@ void display_console_putc(char character)
 	}
 }
 
+void display_framebuffer_blit(const uint32_t *pixels, uint32_t width,
+							  uint32_t height, uint32_t stride_pixels,
+							  int32_t x, int32_t y)
+{
+	if (!framebuffer.ready || !pixels || stride_pixels < width)
+		return;
+
+	for (uint32_t source_y = 0; source_y < height; source_y++) {
+		int32_t target_y = y + (int32_t)source_y;
+		if (target_y < 0 || (uint32_t)target_y >= framebuffer.height)
+			continue;
+
+		uint32_t source_x = 0;
+		if (x < 0)
+			source_x = (uint32_t)(-x);
+		if (source_x >= width || source_x >= stride_pixels)
+			continue;
+
+		uint32_t target_x = (uint32_t)(x + (int32_t)source_x);
+		uint32_t copy_width = width - source_x;
+		if (target_x >= framebuffer.width)
+			continue;
+		if (copy_width > framebuffer.width - target_x)
+			copy_width = framebuffer.width - target_x;
+
+		volatile uint32_t *target = (volatile uint32_t *)(
+			framebuffer.address + (uint32_t)target_y * framebuffer.pitch +
+			target_x * sizeof(uint32_t));
+		const uint32_t *source = pixels + source_y * stride_pixels + source_x;
+		for (uint32_t column = 0; column < copy_width; column++)
+			target[column] = source[column];
+	}
+}
+
+void display_framebuffer_draw_text(const char *text, int32_t x, int32_t y,
+							   uint32_t color)
+{
+	if (!framebuffer.ready || !text)
+		return;
+	for (; *text; text++, x += FONT_WIDTH) {
+		for (uint32_t row = 0; row < FONT_HEIGHT; row++) {
+			uint8_t bits = glyph_row(*text, row);
+			for (uint32_t bit = 0; bit < 5; bit++)
+				if (bits & (1u << (4 - bit)) && x + (int32_t)bit >= 0 &&
+					y + (int32_t)row >= 0 &&
+					(uint32_t)(x + (int32_t)bit) < framebuffer.width &&
+					(uint32_t)(y + (int32_t)row) < framebuffer.height)
+					put_pixel((uint32_t)(x + (int32_t)bit),
+					          (uint32_t)(y + (int32_t)row), color);
+		}
+	}
+}
+
+void display_framebuffer_draw_cursor(int32_t x, int32_t y)
+{
+	if (!framebuffer.ready)
+		return;
+	framebuffer.mouse_cursor_x = x;
+	framebuffer.mouse_cursor_y = y;
+	for (int32_t row = 0; row < 12; row++) {
+		for (int32_t column = 0; column <= row / 2; column++) {
+			int32_t target_x = x + column;
+			int32_t target_y = y + row;
+			if (target_x >= 0 && target_y >= 0 &&
+				(uint32_t)target_x < framebuffer.width &&
+				(uint32_t)target_y < framebuffer.height)
+				put_pixel((uint32_t)target_x, (uint32_t)target_y,
+				          0xFFFFFFFFu);
+		}
+	}
+}
+
+void display_framebuffer_clear(void)
+{
+	if (framebuffer.ready)
+		clear_screen();
+}
+
+void display_framebuffer_present_cursor(void)
+{
+	display_framebuffer_draw_cursor(framebuffer.mouse_cursor_x,
+	                                framebuffer.mouse_cursor_y);
+}
+
+void display_framebuffer_fill_rect(int32_t x, int32_t y, uint32_t width,
+								   uint32_t height, uint32_t color)
+{
+	if (!framebuffer.ready)
+		return;
+	for (uint32_t row = 0; row < height; row++) {
+		int32_t target_y = y + (int32_t)row;
+		if (target_y < 0 || (uint32_t)target_y >= framebuffer.height)
+			continue;
+		for (uint32_t column = 0; column < width; column++) {
+			int32_t target_x = x + (int32_t)column;
+			if (target_x >= 0 && (uint32_t)target_x < framebuffer.width)
+				put_pixel((uint32_t)target_x, (uint32_t)target_y, color);
+		}
+	}
+}
 int display_set_mode(const struct display_mode *mode)
 {
 	if (mode == 0 || mode->width == 0 || mode->height == 0) return -1;

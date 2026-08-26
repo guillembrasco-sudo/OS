@@ -3,11 +3,15 @@
  #include <kernel/rcu.h>
 #include <hal/display.h>
 #include <hal/clock.h>
+#include <hal/cpu.h>
 #include <fs/devfs.h>
 #include <fs/vfs.h>
 #include <drivers/virtio_gpu.h>
 #include <drivers/keyboard.h>
 #include <drivers/mouse.h>
+#include <drivers/pci.h>
+#include <drivers/virtio_net.h>
+#include <drivers/net_dispatch.h>
 #include <arch/x86_64/idt.h>
 #include <arch/x86_64/gdt.h>
 #include <kernel/tss.h>
@@ -54,6 +58,9 @@ void syscall_init(void);
 void tss_init(uint64_t kernel_stack_top);
 
 static struct virtio_gpu boot_gpu;
+static struct virtio_net boot_net;
+static struct net_runtime net_runtime;
+static uint8_t net_rx_frame[2048];
 static WindowManager window_manager;
 extern uint8_t stack_top[];
 // Exportado por linker.ld: fin fisico del kernel (codigo+datos+bss), justo
@@ -92,8 +99,12 @@ void kmain(uint64_t multiboot_magic, uint64_t multiboot_info_addr)
 		if (acpi_init(&platform) == 0 &&
 		    lapic_init(platform.lapic_address) == 0 &&
 		    ioapic_init(platform.ioapic_address, platform.ioapic_gsi_base) == 0)
+		{
+			ioapic_route_irq(1, 33, 0);
+			ioapic_route_irq(12, 44, 0);
 			kprintf("[ACPI] LAPIC/IOAPIC ready; CPUs enabled=%u\n",
 			        platform.enabled_cpus);
+		}
 		else
 			kprintf("[ACPI] MADT/LAPIC unavailable; using legacy IRQ path\n");
 	}
@@ -103,7 +114,7 @@ void kmain(uint64_t multiboot_magic, uint64_t multiboot_info_addr)
 	// primer uso porque heap_start seguia siendo NULL. Reservamos unas
 	// paginas fisicas y le damos a kheap su alias en el mapa directo
 	// (ya disponible tras vmm_init/paging_init).
-#define KHEAP_INITIAL_PAGES 256 // 1 MiB de arena inicial para kmalloc
+#define KHEAP_INITIAL_PAGES 4096 // 16 MiB para ventanas y sus backbuffers
 	uint64_t kheap_phys = pmm_alloc_pages(KHEAP_INITIAL_PAGES);
 	if (kheap_phys == 0)
 		panic("kmain: sin memoria fisica para el heap inicial del kernel");
@@ -119,17 +130,42 @@ void kmain(uint64_t multiboot_magic, uint64_t multiboot_info_addr)
 	slab_init();
 	rcu_init();
 	pci_scan();
+	net_runtime_init(&net_runtime);
+	if (pci_device_count() == 0)
+		kprintf("[PCI] no devices found\n");
+	else {
+		const struct pci_device *net_pci =
+			pci_find_device(VIRTIO_NET_PCI_VENDOR, VIRTIO_NET_PCI_DEVICE);
+		if (!net_pci)
+			net_pci = pci_find_device(VIRTIO_NET_PCI_VENDOR, 0x1000);
+		if (net_pci && pci_enable_bus_master(net_pci) == 0) {
+			struct net_mac net_mac = {{0, 0, 0, 0, 0, 0}};
+			if (virtio_net_init_from_pci(&boot_net, net_pci, net_mac) == 0) {
+				kprintf("[NET] VirtIO-net ready for frame polling\n");
+			}
+		}
+	}
 	if (virtio_gpu_init(&boot_gpu, 0) != 0) {
 		display_set_mode(&(struct display_mode){ 80, 25, 0, 0 });
 	} else {
 		window_manager_init_kernel(&window_manager,
 		                           boot_gpu.drm.mode.width,
 		                           boot_gpu.drm.mode.height);
-		keyboard_init(&window_manager);
-		mouse_init(&window_manager);
+		if (keyboard_init(&window_manager) != 0)
+			kprintf("[INPUT] keyboard initialization failed\n");
+		if (mouse_init(&window_manager) != 0)
+			kprintf("[INPUT] mouse initialization failed\n");
 	}
 	sched_init();
 	user_init();
-	for (;;)
-		;
+	arch_cpu_enable_interrupts();
+	for (;;) {
+		size_t frame_length = 0;
+		if (virtio_net_is_ready(&boot_net) &&
+		    virtio_net_poll(&boot_net, net_rx_frame, sizeof(net_rx_frame),
+		                    &frame_length) > 0)
+			net_runtime_receive(&net_runtime, &boot_net.device,
+			                    net_rx_frame, frame_length);
+		arch_cpu_halt();
+	}
 }

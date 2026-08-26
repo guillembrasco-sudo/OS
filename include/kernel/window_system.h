@@ -183,6 +183,9 @@ struct Window {
     WindowAllocator allocator;
     DisplayInfo display;
     DamageRegion damage;
+    char input_text[64];
+    uint32_t input_length;
+    char status_text[64];
     void *owner;
 };
 
@@ -232,6 +235,8 @@ void window_manager_init_kernel(
     uint32_t display_width,
     uint32_t display_height
 );
+void window_manager_present(WindowManager *wm);
+void window_master_console_render(Window *window);
 
 void window_manager_set_standby_callback(
     WindowManager *wm,
@@ -334,6 +339,14 @@ void window_dispatch_key_down(
 
 /* Executes one command entered in the master console. */
 int window_master_console_execute(WindowManager *wm, const char *command);
+
+Window *window_default_open(WindowManager *wm, const char *title,
+                            int32_t x, int32_t y, uint32_t color);
+void window_set_status(Window *window, const char *text);
+int window_clock_toggle(WindowManager *wm);
+int window_file_explorer_open(WindowManager *wm);
+int window_device_status_open(WindowManager *wm);
+int window_web_open(WindowManager *wm);
 
 /* Kernel-side bridge used by the console syscall. */
 int window_manager_kernel_execute_command(const char *command);

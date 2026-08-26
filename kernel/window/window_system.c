@@ -1,7 +1,11 @@
 #include <kernel/window_system.h>
 
-#include <string.h>
+#include <stdint.h>
+#include <lib/string.h>
 #include <limits.h>
+#ifdef KERNEL_BUILD
+#include <mm/kheap.h>
+#endif
 
 #define DEFAULT_TITLEBAR_H   35u
 #define DEFAULT_FOOTER_H    25u
@@ -22,13 +26,23 @@
 
 static void *default_alloc(size_t size, void *ctx) {
     (void)ctx;
-    /* Replace with kmalloc/pool allocator in the OS. */
+#ifdef KERNEL_BUILD
+    void *ptr = kmalloc(size);
+    if (ptr)
+        memset(ptr, 0, size);
+    return ptr;
+#else
     return __builtin_calloc(1, size);
+#endif
 }
 
 static void default_free(void *ptr, void *ctx) {
     (void)ctx;
+#ifdef KERNEL_BUILD
+    kfree(ptr);
+#else
     __builtin_free(ptr);
+#endif
 }
 
 static WindowAllocator normalize_allocator(WindowAllocator a) {
@@ -397,7 +411,7 @@ int window_minimize(WindowManager *wm, Window *window) {
         return 0;
 
     if (window->state == WINDOW_STATE_MINIMIZED)
-        return 1;
+        return window_restore(wm, window);
 
     if (window->state == WINDOW_STATE_MAXIMIZED) {
         window->saved_x = window->x;
@@ -408,8 +422,16 @@ int window_minimize(WindowManager *wm, Window *window) {
 
     const Rect old = window_get_bounds(window);
 
+    window->saved_x = window->x;
+    window->saved_y = window->y;
+    window->saved_width = window->width;
+    window->saved_height = window->height;
     window->state = WINDOW_STATE_MINIMIZED;
-    window->flags &= ~WINDOW_FLAG_VISIBLE;
+    window->height = (int32_t)window->collapsed_height;
+    if (!resize_backbuffer(window, window->width, window->height))
+        return 0;
+    window_recalculate_layout(window);
+    window->flags |= WINDOW_FLAG_VISIBLE | WINDOW_FLAG_DIRTY;
 
     mark_damage_internal(wm, window, &old);
     notify_taskbar_internal(wm, window);
@@ -481,8 +503,14 @@ int window_restore(WindowManager *wm, Window *window) {
     }
 
     if (window->state == WINDOW_STATE_MINIMIZED) {
+        window->x = window->saved_x;
+        window->y = window->saved_y;
+        window->width = window->saved_width;
+        window->height = window->saved_height;
         window->state = WINDOW_STATE_NORMAL;
         window->flags |= WINDOW_FLAG_VISIBLE | WINDOW_FLAG_DIRTY;
+        if (!resize_backbuffer(window, window->width, window->height))
+            return 0;
         window_recalculate_layout(window);
         mark_damage_internal(wm, window, &window->clip);
         notify_taskbar_internal(wm, window);
@@ -501,32 +529,7 @@ int window_close(WindowManager *wm, Window *window) {
         return 1;
     }
 
-    if (window->close_latched)
-        return 1;
-
-    window->close_latched = 1;
-
-    /* Matches the HTML's 150 ms visual delay semantically.
-       The native server should implement the timing in its event loop. */
-    if (window->callbacks.mouse_click)
-        window->callbacks.mouse_click(window, -1, -1, 0);
-
-    const Rect old = window_get_bounds(window);
-    const int32_t collapsed = (int32_t)window->collapsed_height;
-    const int32_t target_top =
-        window->y + ((window->height - collapsed) / 2);
-
-    window->flags |= WINDOW_FLAG_ANIMATING;
-    window_begin_animation(
-        window,
-        window->y,
-        target_top,
-        window->height,
-        collapsed,
-        ANIMATION_CLOSE_MS
-    );
-
-    mark_damage_internal(wm, window, &old);
+    window_destroy(wm, window);
     return 1;
 }
 
@@ -903,6 +906,12 @@ void window_dispatch_mouse_click(
 
     window_manager_wake(wm);
 
+    if (button == 0) {
+        if (wm->focused)
+            window_end_drag(wm->focused);
+        return;
+    }
+
     Window *window = window_manager_pick_window(wm, mouse_x, mouse_y);
     if (!window) return;
 
@@ -919,6 +928,8 @@ void window_dispatch_mouse_click(
 
         case WINDOW_HIT_MAXIMIZE:
             if (window->state == WINDOW_STATE_MAXIMIZED)
+                window_restore(wm, window);
+            else if (window->state == WINDOW_STATE_MINIMIZED)
                 window_restore(wm, window);
             else
                 window_maximize(wm, window);
@@ -941,6 +952,9 @@ void window_dispatch_mouse_click(
         default:
             break;
     }
+#ifdef KERNEL_BUILD
+    window_manager_present(wm);
+#endif
 }
 
 void window_dispatch_mouse_move(
@@ -956,6 +970,9 @@ void window_dispatch_mouse_move(
 
     if (window && window->dragging) {
         window_drag_to(wm, window, mouse_x, mouse_y);
+#ifdef KERNEL_BUILD
+        window_manager_present(wm);
+#endif
         return;
     }
 
