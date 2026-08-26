@@ -12,7 +12,7 @@ typedef struct {
     uint64_t rbp, rdi, rsi, rdx, rcx, rbx, rax;
     uint64_t int_no, err_code;                    // empujados por el stub común
     uint64_t rip, cs, rflags, rsp, ss;             // empujados automáticamente por la CPU
-} __attribute__((packed)) registers_t;
+} registers_t;
 
 typedef void (*isr_handler_t)(registers_t *regs);
 

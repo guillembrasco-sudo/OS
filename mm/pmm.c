@@ -88,6 +88,24 @@ void pmm_init(uint64_t mmap_addr, uint32_t mmap_len, uint64_t kernel_start, uint
     }
 }
 
+void pmm_reserve_range(uint64_t physical, size_t length)
+{
+    uint64_t first;
+    uint64_t last;
+    if (!length || physical >= PMM_MAX_MEMORY ||
+        length > PMM_MAX_MEMORY - physical)
+        return;
+    first = physical / PMM_PAGE_SIZE;
+    last = (physical + length + PMM_PAGE_SIZE - 1) / PMM_PAGE_SIZE;
+    spinlock_acquire(&pmm_lock);
+    for (uint64_t page = first; page < last; ++page)
+        if (!bitmap_test(page)) {
+            bitmap_set(page);
+            ++used_pages;
+        }
+    spinlock_release(&pmm_lock);
+}
+
 uint64_t pmm_alloc_page(void) {
     spinlock_acquire(&pmm_lock);
 

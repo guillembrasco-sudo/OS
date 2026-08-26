@@ -142,6 +142,8 @@ gdt64:
     dq 0
     dq 0x00af9a000000ffff                      ; Kernel Code 64-bit (CS = 0x08)
     dq 0x00cf92000000ffff                      ; Kernel Data 64-bit (DS = 0x10)
+    dq 0x00affa000000ffff                      ; User Code 64-bit (CS = 0x1b)
+    dq 0x00cff2000000ffff                      ; User Data 64-bit (DS = 0x23)
 .pointer:
     dw $ - gdt64 - 1
     dd gdt64 - KERNEL_VMA

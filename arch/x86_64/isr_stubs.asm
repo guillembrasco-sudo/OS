@@ -1,6 +1,6 @@
 [bits 64]
 section .text
-extern exception_handler
+extern isr_common_dispatch
 global isr_stub_table
 
 %macro ISR_NOERRCODE 1
@@ -48,6 +48,12 @@ ISR_NOERRCODE i
 ISR_ERRCODE   30 ; #SX (Security Exception en AMD64)
 ISR_NOERRCODE 31
 
+%assign i 32
+%rep 16
+ISR_NOERRCODE i
+%assign i i+1
+%endrep
+
 isr_common:
     push rax
     push rbx
@@ -65,11 +71,8 @@ isr_common:
     push r14
     push r15
 
-    mov rdi, [rsp + 120]     ; Vector
-    mov rsi, [rsp + 128]     ; Error Code
-
-    ; RSP ya está alineado a 16 bytes (176 bytes apilados)
-    call exception_handler
+    mov rdi, rsp              ; registers_t *regs
+    call isr_common_dispatch
 
     pop r15
     pop r14
@@ -93,7 +96,7 @@ isr_common:
 section .rodata
 isr_stub_table:
 %assign i 0
-%rep 32
+%rep 48
     dq isr_stub_%[i]
 %assign i i+1
 %endrep

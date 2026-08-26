@@ -9,7 +9,8 @@
 #define SYS_YIELD 2
 #define SYS_EXIT  3
 #define SYS_MALLOC 4
-#define SYSCALL_MAX 5
+#define SYS_CONSOLE_COMMAND 5
+#define SYSCALL_MAX 6
 
 typedef int64_t (*syscall_fn_t)(uint64_t a1, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5);
 
