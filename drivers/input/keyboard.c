@@ -25,12 +25,21 @@ int keyboard_init(WindowManager *window_manager)
 
 void keyboard_irq_handler(uint8_t irq, void *context)
 {
+	static uint8_t modifiers;
 	uint8_t scancode;
 	(void)irq;
 	if (!(io_in8(PS2_STATUS) & PS2_STATUS_OUTPUT))
 		return;
 	scancode = io_in8(PS2_DATA);
+	if (scancode == 0x2a || scancode == 0x36) {
+		modifiers |= 1;
+		return;
+	}
+	if (scancode == 0xaa || scancode == 0xb6) {
+		modifiers &= (uint8_t)~1u;
+		return;
+	}
 	if (scancode & 0x80)
 		return;
-	window_dispatch_key_down((WindowManager *)context, scancode, 0);
+	window_dispatch_key_down((WindowManager *)context, scancode, modifiers);
 }

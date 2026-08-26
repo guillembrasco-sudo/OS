@@ -61,6 +61,10 @@ int clock_read_rtc(struct clock_datetime *datetime)
 		datetime->year = (uint16_t)(rtc_bcd_to_binary(century) * 100 +
 		                             rtc_bcd_to_binary(rtc_read(0x09)));
 	}
+	if (datetime->year < 1970 || datetime->year > 2099)
+		datetime->year = (uint16_t)(2000 +
+		                             (status_b & 0x04 ? rtc_read(0x09) :
+		                              rtc_bcd_to_binary(rtc_read(0x09))));
 	return datetime->year >= 1970 && datetime->month >= 1 &&
 	       datetime->month <= 12 && datetime->day >= 1 &&
 	       datetime->day <= 31 ? 0 : -1;

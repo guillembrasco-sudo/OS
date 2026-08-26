@@ -3,6 +3,7 @@
 #include <kernel/panic.h>
 #include <drivers/irqdomain.h>
 #include <arch/x86_64/io.h>
+#include <arch/x86_64/lapic.h>
 
 #define IDT_ENTRIES 256
 static isr_handler_t handlers[IDT_ENTRIES] = {0};
@@ -15,9 +16,13 @@ void isr_common_dispatch(registers_t *regs) {
     if (regs->int_no >= 32 && regs->int_no < 48) {
         uint8_t irq = (uint8_t)(regs->int_no - 32);
         irq_dispatch(irq);
-        if (irq >= 8)
-            io_out8(0xA0, 0x20);
-        io_out8(0x20, 0x20);
+        if (lapic_is_ready())
+            lapic_eoi();
+        else {
+            if (irq >= 8)
+                io_out8(0xA0, 0x20);
+            io_out8(0x20, 0x20);
+        }
         return;
     }
     if (handlers[regs->int_no]) {

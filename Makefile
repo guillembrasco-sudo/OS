@@ -21,7 +21,7 @@ NASM := nasm
 
 CPPFLAGS := -Iinclude -Iinclude/libc -I. -DARCH_$(ARCH)
 CFLAGS := -O2 -Wall -Wextra -std=c11 -ffreestanding -fno-builtin -nostdlib \
-		   -fno-stack-protector $(ARCH_CFLAGS) $(CPPFLAGS)
+		   -fno-stack-protector -DKERNEL_BUILD $(ARCH_CFLAGS) $(CPPFLAGS)
 ASFLAGS := -f elf64
 WINDOW_OPS_AVX2 ?= 0
 ifeq ($(WINDOW_OPS_AVX2),1)
@@ -31,7 +31,7 @@ WINDOW_OPS_ASFLAGS := -D WINDOW_OPS_NO_AVX2
 endif
 LDFLAGS := -m elf_x86_64 -z max-page-size=0x1000 -T linker.ld
 
-C_DIRS := kernel mm fs hal lib drivers modules user arch/$(ARCH)
+C_DIRS := kernel mm fs hal lib drivers modules user firmware arch/$(ARCH)
 ASM_DIRS := boot arch/$(ARCH) user
 
 C_SRCS := $(shell find $(C_DIRS) -type f -name '*.c' 2>/dev/null)
@@ -54,7 +54,7 @@ $(BUILD_DIR)/%.o: %.c
 
 $(BUILD_DIR)/%_asm.o: %.asm
 	@mkdir -p $(dir $@)
-	$(NASM) $(ASFLAGS) $< -o $@
+	$(NASM) $(ASFLAGS) $(WINDOW_OPS_ASFLAGS) $< -o $@
 
 clean:
 	rm -rf $(BUILD_DIR) $(TARGET) kernel.bin

@@ -33,3 +33,8 @@ cat /c/grub2/i386-pc/cdboot.img \
   -D qemu.log \
   -no-reboot \
   -no-shutdown
+
+
+cp kernel.bin iso/boot/
+
+grub-mkrescue -o kernel.iso iso
