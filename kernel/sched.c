@@ -68,17 +68,49 @@ void sched_enqueue(struct sched_entity *entity)
 	}
 }
 
+// Sustituye 'node' por 'child' en el lugar que ocupaba dentro del árbol
+// (ajustando el puntero del padre, o run_tree si 'node' era la raíz).
+// No toca los hijos de 'child': lo usan replace_node/sched_dequeue después
+// de haberlos colocado ya donde corresponde.
+static void transplant(struct sched_entity *node, struct sched_entity *child)
+{
+	if (node->parent == 0)
+		run_tree = child;
+	else if (node == node->parent->left)
+		node->parent->left = child;
+	else
+		node->parent->right = child;
+	if (child != 0)
+		child->parent = node->parent;
+}
+
 void sched_dequeue(struct sched_entity *entity)
 {
-	struct sched_entity *replacement = entity->left != 0 ? entity->left : entity->right;
-	if (replacement != 0)
-		replacement->parent = entity->parent;
-	if (entity->parent == 0)
-		run_tree = replacement;
-	else if (entity == entity->parent->left)
-		entity->parent->left = replacement;
-	else
-		entity->parent->right = replacement;
+	if (entity->left == 0) {
+		transplant(entity, entity->right);
+	} else if (entity->right == 0) {
+		transplant(entity, entity->left);
+	} else {
+		// Dos hijos: el sucesor in-order (el nodo con vruntime más
+		// pequeño del subárbol derecho, es decir su descendiente más
+		// a la izquierda) ocupa el lugar de 'entity' sin perder
+		// ninguno de los dos subárboles.
+		struct sched_entity *successor = entity->right;
+		while (successor->left != 0)
+			successor = successor->left;
+
+		if (successor->parent != entity) {
+			// El sucesor cuelga más abajo: primero lo sacamos de
+			// su sitio actual (enlazando su propio hijo derecho,
+			// si tiene, con SU padre) antes de moverlo.
+			transplant(successor, successor->right);
+			successor->right = entity->right;
+			successor->right->parent = successor;
+		}
+		transplant(entity, successor);
+		successor->left = entity->left;
+		successor->left->parent = successor;
+	}
 	entity->left = 0;
 	entity->right = 0;
 	entity->parent = 0;

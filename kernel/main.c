@@ -9,6 +9,9 @@
 #include <kernel/tss.h>
 #include <mm/pmm.h>
 #include <mm/vmm.h>
+#include <mm/kheap.h>
+#include <arch/paging.h>
+#include <kernel/panic.h>
 
 // Layout de multiboot_info_t (Multiboot 1) para localizar el mapa de
 // memoria. boot/boot.asm arranca con la cabecera clasica Multiboot1
@@ -67,6 +70,17 @@ void kmain(uint64_t multiboot_magic, uint64_t multiboot_info_addr)
 	// Fin fisico: simbolo _kernel_phys_bss_end exportado por linker.ld.
 	pmm_init(mmap_addr, mmap_len, 0x00100000ULL, (uint64_t)(uintptr_t)_kernel_phys_bss_end);
 	vmm_init();
+
+	// kheap_init() nunca se llamaba: kmalloc() habria hecho panic() en el
+	// primer uso porque heap_start seguia siendo NULL. Reservamos unas
+	// paginas fisicas y le damos a kheap su alias en el mapa directo
+	// (ya disponible tras vmm_init/paging_init).
+#define KHEAP_INITIAL_PAGES 256 // 1 MiB de arena inicial para kmalloc
+	uint64_t kheap_phys = pmm_alloc_pages(KHEAP_INITIAL_PAGES);
+	if (kheap_phys == 0)
+		panic("kmain: sin memoria fisica para el heap inicial del kernel");
+	kheap_init((uintptr_t)paging_phys_to_virt(kheap_phys),
+	           KHEAP_INITIAL_PAGES * PMM_PAGE_SIZE);
 	kaslr_arch_init();
 	display_early_console_init();
 	devfs_init();
