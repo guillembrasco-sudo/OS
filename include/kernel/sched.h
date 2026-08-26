@@ -13,6 +13,8 @@ struct sched_entity {
     uint8_t red;
 };
 
+#define SCHED_MAX_CPUS 64
+
 void sched_init(void);
 void sched_enqueue(struct sched_entity *entity);
 void sched_dequeue(struct sched_entity *entity);

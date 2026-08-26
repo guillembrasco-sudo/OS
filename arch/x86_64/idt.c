@@ -27,7 +27,7 @@ static idt_ptr_t idt_ptr;
 extern "C" {
 #endif
 
-extern void* isr_stub_table[32];
+extern void* isr_stub_table[48];
 
 #ifdef __cplusplus
 }
@@ -58,9 +58,9 @@ static void pic_disable(void) {
     __asm__ __volatile__("outb %0, %1" : : "a"((uint8_t)0x01), "Nd"((uint16_t)0x21));
     __asm__ __volatile__("outb %0, %1" : : "a"((uint8_t)0x01), "Nd"((uint16_t)0xA1));
 
-    // Enmascarar todas las interrupciones (desactivar PIC)
-    __asm__ __volatile__("outb %0, %1" : : "a"((uint8_t)0xFF), "Nd"((uint16_t)0x21));
-    __asm__ __volatile__("outb %0, %1" : : "a"((uint8_t)0xFF), "Nd"((uint16_t)0xA1));
+    // Habilitar IRQ1 (teclado), IRQ2 (cascada) y IRQ12 (ratón).
+    __asm__ __volatile__("outb %0, %1" : : "a"((uint8_t)0xF9), "Nd"((uint16_t)0x21));
+    __asm__ __volatile__("outb %0, %1" : : "a"((uint8_t)0xEF), "Nd"((uint16_t)0xA1));
 }
 
 void idt_init(void) {
@@ -74,10 +74,10 @@ void idt_init(void) {
         idt_set_gate(i, 0, 0, 0, 0);
     }
 
-    // Configurar las 32 excepciones del procesador (0 a 31)
-    for (uint8_t i = 0; i < 32; i++) {
+    // Excepciones del procesador y las IRQ remapeadas del PIC.
+    for (uint8_t i = 0; i < 48; i++) {
         //uint8_t ist_index = (i == 8) ? 1 : 0;
-        idt_set_gate(i, (uint64_t)isr_stub_table[i], 0x08, 0x8E, 0); // ist_index
+        idt_set_gate(i, (uint64_t)isr_stub_table[i], 0x08, 0x8E, 0);
     }
 
     // Cargar la IDT usando lidt

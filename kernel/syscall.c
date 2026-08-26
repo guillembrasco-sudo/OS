@@ -1,8 +1,12 @@
 // kernel/syscall.c
 #include "kernel/syscall.h"
-#include "mm/kheap.h"
 #include "kernel/panic.h"
 #include <hal/cpu.h>
+#include <arch/uaccess.h>
+#include <arch/x86_64/msr.h>
+#include <kernel/window_system.h>
+
+extern void syscall_entry(void);
 
 static syscall_fn_t syscall_table[SYSCALL_MAX] = {0};
 
@@ -14,14 +18,15 @@ static syscall_fn_t syscall_table[SYSCALL_MAX] = {0};
 // olvide al integrar el scheduler.
 static int64_t sys_write_impl(uint64_t fd, uint64_t buf_user, uint64_t len, uint64_t a4, uint64_t a5) {
     (void)a4; (void)a5;
-    // TODO(seguridad): validar que [buf_user, buf_user+len) está dentro del
-    // espacio de direcciones del proceso llamante antes de leer de ahí.
-    // Sin esa validación, un proceso de usuario puede pedirle al kernel que
-    // lea memoria arbitraria del kernel pasando un puntero fabricado.
     if (fd != 1 && fd != 2) return -1; // solo stdout/stderr por ahora
-    const char *buf = (const char *)buf_user;
+    if (len > 4096 || len == 0)
+        return -1;
+
+    char buffer[4096];
+    if (copy_from_user(buffer, (const void *)buf_user, (size_t)len) != 0)
+        return -1;
     for (uint64_t i = 0; i < len; i++) {
-        arch_console_putc(buf[i]); // Reemplazado kputchar por la abstracción de HAL
+        arch_console_putc(buffer[i]);
     }
     return (int64_t)len;
 }
@@ -41,18 +46,24 @@ static int64_t sys_exit_impl(uint64_t code, uint64_t a2, uint64_t a3, uint64_t a
     (void)a2; (void)a3; (void)a4; (void)a5;
     // scheduler_terminate_current((int)code); // idem
     (void)code;
-    for (;;) { __asm__ volatile("hlt"); } // hasta que exista el scheduler, no hay a dónde volver
+    for (;;) { }
 }
 
 static int64_t sys_malloc_impl(uint64_t size, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5) {
     (void)a2; (void)a3; (void)a4; (void)a5;
-    // Exponer kmalloc directo a Ring 3 es temporal y peligroso (un proceso
-    // podría agotar el heap del KERNEL, no el suyo). El diseño correcto es
-    // que cada proceso tenga su propio heap de usuario gestionado vía
-    // sys_brk/sys_mmap sobre su VMM. Lo dejo así de momento porque el TODO
-    // lo pide explícitamente como placeholder, pero es el primer candidato
-    // a reemplazar en cuanto exista VMM por proceso.
-    return (int64_t)(uintptr_t)kmalloc((size_t)size);
+    (void)size;
+    return -38; // user heaps require a per-process address space
+}
+
+static int64_t sys_console_command_impl(uint64_t command_user, uint64_t a2,
+                                        uint64_t a3, uint64_t a4, uint64_t a5) {
+    char command[64];
+    (void)a2; (void)a3; (void)a4; (void)a5;
+    if (copy_from_user(command, (const void *)command_user,
+                       sizeof(command) - 1) != 0)
+        return -1;
+    command[sizeof(command) - 1] = '\0';
+    return window_manager_kernel_execute_command(command);
 }
 
 void syscall_init(void) {
@@ -61,6 +72,8 @@ void syscall_init(void) {
     syscall_table[SYS_YIELD]  = sys_yield_impl;
     syscall_table[SYS_EXIT]   = sys_exit_impl;
     syscall_table[SYS_MALLOC] = sys_malloc_impl;
+    syscall_table[SYS_CONSOLE_COMMAND] = sys_console_command_impl;
+    x86_syscall_enable((uintptr_t)syscall_entry);
 }
 
 int64_t syscall_dispatch(uint64_t num, uint64_t a1, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5) {

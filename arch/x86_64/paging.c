@@ -281,3 +281,53 @@ int paging_map_region(uint64_t phys_base, uint64_t virt_base, uint64_t size,
         flush_tlb_full();
     return 0;
 }
+
+int paging_create_user_space(uint64_t *pml4_physical)
+{
+    uint64_t physical;
+    uint64_t *new_pml4;
+    uint64_t *current;
+
+    if (!pml4_physical || !direct_map_ready)
+        return -1;
+    physical = pmm_alloc_page();
+    if (!physical)
+        return -1;
+    new_pml4 = (uint64_t *)(uintptr_t)paging_phys_to_virt(physical);
+    current = current_pml4();
+    memcpy(new_pml4, current, PAGE_SIZE_4K);
+    /* User mappings are added explicitly by the process loader. */
+    new_pml4[0] &= ~PAGING_USER;
+    new_pml4[256] &= ~PAGING_USER;
+    new_pml4[511] &= ~PAGING_USER;
+    *pml4_physical = physical;
+    return 0;
+}
+
+int paging_map_page_in_space(uint64_t pml4_physical,
+                                uint64_t virtual_address,
+                                uint64_t physical_address,
+                                uint64_t flags)
+{
+    uint64_t previous_cr3;
+    int result;
+
+    if (!direct_map_ready || !pml4_physical ||
+        (virtual_address % PAGE_SIZE_4K) != 0 ||
+        (physical_address % PAGE_SIZE_4K) != 0)
+        return -1;
+    previous_cr3 = read_cr3();
+    write_cr3(pml4_physical);
+    result = paging_map_page(virtual_address, physical_address,
+                             flags | PAGING_USER);
+    write_cr3(previous_cr3);
+    return result;
+}
+
+int paging_activate_space(uint64_t pml4_physical)
+{
+    if (!direct_map_ready || (pml4_physical & (PAGE_SIZE_4K - 1)) != 0)
+        return -1;
+    write_cr3(pml4_physical);
+    return 0;
+}

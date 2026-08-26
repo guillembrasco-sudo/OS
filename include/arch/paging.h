@@ -57,4 +57,12 @@ uint64_t paging_translate(uint64_t virtual_address);
 int paging_map_region(uint64_t phys_base, uint64_t virt_base, uint64_t size,
                        uint64_t flags, int allow_1gb, int allow_2mb);
 
+/* Creates a new PML4 containing the current kernel mappings. */
+int paging_create_user_space(uint64_t *pml4_physical);
+int paging_map_page_in_space(uint64_t pml4_physical,
+                             uint64_t virtual_address,
+                             uint64_t physical_address,
+                             uint64_t flags);
+int paging_activate_space(uint64_t pml4_physical);
+
 #endif // ARCH_PAGING_H

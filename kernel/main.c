@@ -2,8 +2,12 @@
  #include <mm/slab.h>
  #include <kernel/rcu.h>
 #include <hal/display.h>
+#include <hal/clock.h>
 #include <fs/devfs.h>
+#include <fs/vfs.h>
 #include <drivers/virtio_gpu.h>
+#include <drivers/keyboard.h>
+#include <drivers/mouse.h>
 #include <arch/x86_64/idt.h>
 #include <arch/x86_64/gdt.h>
 #include <kernel/tss.h>
@@ -11,7 +15,12 @@
 #include <mm/vmm.h>
 #include <mm/kheap.h>
 #include <arch/paging.h>
+#include <arch/x86_64/lapic.h>
+#include <arch/x86_64/ioapic.h>
+#include <firmware/acpi.h>
 #include <kernel/panic.h>
+#include <kernel/window_system.h>
+#include <kernel/smp.h>
 #include <lib/printf.h>
 
 // Layout de multiboot_info_t (Multiboot 1) para localizar el mapa de
@@ -41,9 +50,11 @@ void pci_scan(void);
 void sched_init(void);
 void user_init(void);
 void idt_init(void);
+void syscall_init(void);
 void tss_init(uint64_t kernel_stack_top);
 
 static struct virtio_gpu boot_gpu;
+static WindowManager window_manager;
 extern uint8_t stack_top[];
 // Exportado por linker.ld: fin fisico del kernel (codigo+datos+bss), justo
 // donde termina la region que pmm_init() debe marcar como reservada.
@@ -58,6 +69,7 @@ void kmain(uint64_t multiboot_magic, uint64_t multiboot_info_addr)
 	init_gdt();
 	tss_init((uint64_t)stack_top);
 	idt_init();
+	syscall_init();
 
 	uint64_t mmap_addr = 0;
 	uint32_t mmap_len  = 0;
@@ -72,7 +84,20 @@ void kmain(uint64_t multiboot_magic, uint64_t multiboot_info_addr)
 	// y load_addr = 0x00100000 en la cabecera Multiboot de boot.asm).
 	// Fin fisico: simbolo _kernel_phys_bss_end exportado por linker.ld.
 	pmm_init(mmap_addr, mmap_len, 0x00100000ULL, (uint64_t)(uintptr_t)_kernel_phys_bss_end);
+	pmm_reserve_range(0x8000, 0x1000);
 	vmm_init();
+	smp_init();
+	{
+		struct acpi_platform_info platform;
+		if (acpi_init(&platform) == 0 &&
+		    lapic_init(platform.lapic_address) == 0 &&
+		    ioapic_init(platform.ioapic_address, platform.ioapic_gsi_base) == 0)
+			kprintf("[ACPI] LAPIC/IOAPIC ready; CPUs enabled=%u\n",
+			        platform.enabled_cpus);
+		else
+			kprintf("[ACPI] MADT/LAPIC unavailable; using legacy IRQ path\n");
+	}
+	clock_init();
 
 	// kheap_init() nunca se llamaba: kmalloc() habria hecho panic() en el
 	// primer uso porque heap_start seguia siendo NULL. Reservamos unas
@@ -89,12 +114,20 @@ void kmain(uint64_t multiboot_magic, uint64_t multiboot_info_addr)
 		kprintf("[DISPLAY] framebuffer no disponible; usando salida serie/VGA\n");
 	else
 		kprintf("[DISPLAY] framebuffer console ready\n");
+	vfs_init();
 	devfs_init();
 	slab_init();
 	rcu_init();
 	pci_scan();
-	if (virtio_gpu_init(&boot_gpu, 0) != 0)
+	if (virtio_gpu_init(&boot_gpu, 0) != 0) {
 		display_set_mode(&(struct display_mode){ 80, 25, 0, 0 });
+	} else {
+		window_manager_init_kernel(&window_manager,
+		                           boot_gpu.drm.mode.width,
+		                           boot_gpu.drm.mode.height);
+		keyboard_init(&window_manager);
+		mouse_init(&window_manager);
+	}
 	sched_init();
 	user_init();
 	for (;;)

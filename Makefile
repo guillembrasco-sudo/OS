@@ -23,6 +23,12 @@ CPPFLAGS := -Iinclude -Iinclude/libc -I. -DARCH_$(ARCH)
 CFLAGS := -O2 -Wall -Wextra -std=c11 -ffreestanding -fno-builtin -nostdlib \
 		   -fno-stack-protector $(ARCH_CFLAGS) $(CPPFLAGS)
 ASFLAGS := -f elf64
+WINDOW_OPS_AVX2 ?= 0
+ifeq ($(WINDOW_OPS_AVX2),1)
+WINDOW_OPS_ASFLAGS :=
+else
+WINDOW_OPS_ASFLAGS := -D WINDOW_OPS_NO_AVX2
+endif
 LDFLAGS := -m elf_x86_64 -z max-page-size=0x1000 -T linker.ld
 
 C_DIRS := kernel mm fs hal lib drivers modules user arch/$(ARCH)
