@@ -86,18 +86,15 @@ int gpu_ioctl_dispatch(uint32_t process_id, uint32_t request, void *argument)
         struct gpu_context *context = find_context(process_id,
                                                    submit->context_id);
         struct gpu_command *commands = (struct gpu_command *)submit->commands;
-        uintptr_t command_bytes;
+        uintptr_t command_bytes = (uintptr_t)submit->command_count * sizeof(struct gpu_command);
         if (context == 0 || commands == 0 || submit->command_count == 0 ||
             submit->engine >= GPU_ENGINE_COUNT ||
             submit->command_count > GPU_MAX_COMMANDS ||
             submit->command_count > GPU_QUEUE_DEPTH -
                 context->queue_count[submit->engine] ||
-            command_bytes / sizeof(*commands) != submit->command_count ||
-            submit->commands > (uintptr_t)-1 -
-                submit->command_count * sizeof(*commands))
+            command_bytes / sizeof(struct gpu_command) != submit->command_count ||
+            submit->commands > (uintptr_t)-1 - command_bytes)
             { spinlock_release(&context_lock); return -1; }
-        command_bytes = (uintptr_t)submit->command_count * sizeof(*commands);
-        (void)command_bytes;
         for (uint32_t index = 0; index < submit->command_count; ++index)
             if (!command_valid(&commands[index])) {
                 spinlock_release(&context_lock);

@@ -1,5 +1,6 @@
 #include "idt.h"
 #include <stdint.h>
+#include <kernel/panic.h>
 
 #define IDT_ENTRIES 256
 

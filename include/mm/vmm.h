@@ -3,15 +3,11 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <hal/cpu_features.h>
 
 #define VMM_PAGE_PRESENT 0x001ULL
 #define VMM_PAGE_WRITE   0x002ULL
 #define VMM_PAGE_USER    0x004ULL
-
-typedef struct {
-    uint8_t has_1gb_pages;
-    uint8_t has_2mb_pages;
-} cpu_features_t;
 
 int vmm_init(void);
 int vmm_kernel_map(uintptr_t physical, size_t pages, uint64_t flags,
