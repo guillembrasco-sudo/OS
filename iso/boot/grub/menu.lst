@@ -1,5 +1,8 @@
 default 0
 timeout 0
 
+gfxmode 1024x768x32
+gfxpayload 1024x768x32
+
 title Mi Kernel
-kernel /boot/kernel.bin
+multiboot /boot/kernel.bin

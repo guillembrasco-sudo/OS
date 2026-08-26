@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include <hal/cpu.h>
+#include <hal/display.h>
 #include <arch/tlb.h>
 
 #define SERIAL_PORT 0x3f8
@@ -64,6 +65,7 @@ void arch_cpu_relax(void)
 
 void arch_console_putc(char character)
 {
+    display_console_putc(character);
     if (character == '\n') {
         while ((inb(SERIAL_PORT + 5) & 0x20) == 0) ;
         outb(SERIAL_PORT, '\r');

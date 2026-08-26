@@ -15,7 +15,8 @@ struct display_mode {
 	uint32_t format;
 };
 
-int display_early_console_init(void);
+int display_early_console_init(uint64_t multiboot_info_addr);
 int display_set_mode(const struct display_mode *mode);
+void display_console_putc(char character);
 
 #endif
