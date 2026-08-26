@@ -9,8 +9,8 @@ section .multiboot
 align 4
 multiboot_header:
     dd 0x1BADB002                               ; Magic Number para Multiboot 1
-    dd (1 << 0) | (1 << 1) | (1 << 16)          ; Flags: Align + MemInfo + AOUT Kludge (Bit 16)
-    dd - (0x1BADB002 + ((1 << 0) | (1 << 1) | (1 << 16))) ; Checksum
+    dd (1 << 0) | (1 << 1) | (1 << 2) | (1 << 16) ; Align + MemInfo + Video + AOUT Kludge
+    dd - (0x1BADB002 + ((1 << 0) | (1 << 1) | (1 << 2) | (1 << 16))) ; Checksum
 
     ; Campos obligatorios AOUT Kludge (Bit 16):
     dd multiboot_header - KERNEL_VMA            ; header_addr
@@ -18,6 +18,10 @@ multiboot_header:
     dd _kernel_phys_load_end                    ; load_end_addr (Dirección física real)
     dd _kernel_phys_bss_end                     ; bss_end_addr  (Dirección física real)
     dd start - KERNEL_VMA                       ; entry_addr
+    dd 0                                         ; mode_type: linear graphics
+    dd 1024                                      ; requested width
+    dd 768                                       ; requested height
+    dd 32                                        ; requested depth
 multiboot_header_end:
 
 section .text

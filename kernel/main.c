@@ -12,11 +12,13 @@
 #include <mm/kheap.h>
 #include <arch/paging.h>
 #include <kernel/panic.h>
+#include <lib/printf.h>
 
 // Layout de multiboot_info_t (Multiboot 1) para localizar el mapa de
 // memoria. boot/boot.asm arranca con la cabecera clasica Multiboot1
 // (magic 0x1BADB002), asi que este es el formato que realmente llega aqui
 // (no Multiboot2). Solo se listan los campos que necesitamos.
+#pragma pack(push, 1)
 struct multiboot_info {
 	uint32_t flags;
 	uint32_t mem_lower;
@@ -28,7 +30,8 @@ struct multiboot_info {
 	uint32_t syms[4];
 	uint32_t mmap_length;
 	uint32_t mmap_addr;
-} __attribute__((packed));
+};
+#pragma pack(pop)
 
 #define MULTIBOOT_BOOTLOADER_MAGIC 0x2BADB002u
 #define MULTIBOOT_INFO_MEM_MAP     0x00000040u
@@ -82,7 +85,10 @@ void kmain(uint64_t multiboot_magic, uint64_t multiboot_info_addr)
 	kheap_init((uintptr_t)paging_phys_to_virt(kheap_phys),
 	           KHEAP_INITIAL_PAGES * PMM_PAGE_SIZE);
 	kaslr_arch_init();
-	display_early_console_init();
+	if (display_early_console_init(multiboot_info_addr) != 0)
+		kprintf("[DISPLAY] framebuffer no disponible; usando salida serie/VGA\n");
+	else
+		kprintf("[DISPLAY] framebuffer console ready\n");
 	devfs_init();
 	slab_init();
 	rcu_init();
