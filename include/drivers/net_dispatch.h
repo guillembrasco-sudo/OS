@@ -11,6 +11,7 @@ struct net_stats {
     uint64_t ipv6_frames;
     uint64_t tcp_frames;
     uint64_t udp_frames;
+    uint64_t icmp_replies_sent;
 };
 
 struct net_runtime {

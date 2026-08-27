@@ -10,4 +10,6 @@ void *memset(void *destination, int value, size_t length);
 
 size_t strlen(const char *string);
 
+int memcmp(const void *left, const void *right, size_t length);
+
 #endif // STRING_H

@@ -93,6 +93,20 @@ struct net_udp_header {
     uint16_t checksum;
 };
 
+struct net_icmp_header {
+    uint8_t type;
+    uint8_t code;
+    uint16_t checksum;
+    uint16_t identifier;
+    uint16_t sequence;
+};
+
+#define NET_ARP_OPERATION_REQUEST 1
+#define NET_ARP_OPERATION_REPLY   2
+#define NET_ICMP_TYPE_ECHO_REQUEST 8
+#define NET_ICMP_TYPE_ECHO_REPLY   0
+#define IP_PROTOCOL_ICMP 1
+
 #pragma pack(pop)
 
 void net_device_init(net_device *device, struct net_mac mac,

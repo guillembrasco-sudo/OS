@@ -131,6 +131,16 @@ void kmain(uint64_t multiboot_magic, uint64_t multiboot_info_addr)
 	rcu_init();
 	pci_scan();
 	net_runtime_init(&net_runtime);
+	// IP estatica temporal (== la que QEMU con red "user" asigna por
+	// defecto al invitado) para poder probar ARP/ICMP de verdad ahora
+	// mismo. net_dhcp_start()/net_dhcp_handle_offer() (drivers/net/protocols.c)
+	// ya implementan el estado de un cliente DHCP real, pero nada en
+	// dispatch.c dispara todavia una peticion DHCP al recibir una trama -
+	// sigue siendo trabajo pendiente.
+	net_config_set_ipv4(&net_runtime.config,
+	                     (struct net_ipv4){{10, 0, 2, 15}},
+	                     (struct net_ipv4){{255, 255, 255, 0}},
+	                     (struct net_ipv4){{10, 0, 2, 2}});
 	if (pci_device_count() == 0)
 		kprintf("[PCI] no devices found\n");
 	else {

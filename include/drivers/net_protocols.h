@@ -60,6 +60,8 @@ struct net_socket {
 };
 
 void net_protocols_init(struct net_config *config);
+void net_config_set_ipv4(struct net_config *config, struct net_ipv4 address,
+                         struct net_ipv4 netmask, struct net_ipv4 gateway);
 int net_arp_learn(struct net_arp_entry *cache, size_t capacity,
                   const struct net_ipv4 *address, const struct net_mac *mac);
 const struct net_mac *net_arp_lookup(const struct net_arp_entry *cache,

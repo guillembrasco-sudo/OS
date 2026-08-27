@@ -24,3 +24,13 @@ size_t strlen(const char *string)
 		++length;
 	return length;
 }
+
+int memcmp(const void *left, const void *right, size_t length)
+{
+	const unsigned char *left_bytes = left;
+	const unsigned char *right_bytes = right;
+	for (size_t index = 0; index < length; ++index)
+		if (left_bytes[index] != right_bytes[index])
+			return (int)left_bytes[index] - (int)right_bytes[index];
+	return 0;
+}
