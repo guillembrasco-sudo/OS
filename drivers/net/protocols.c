@@ -16,6 +16,22 @@ void net_protocols_init(struct net_config *config)
         memset(config, 0, sizeof(*config));
 }
 
+// Configura una IPv4 estatica para el runtime. El cliente DHCP (net_dhcp_*)
+// ya tiene el estado necesario para negociarla dinamicamente, pero nada en
+// dispatch.c dispara todavia una peticion DHCP real al recibir una trama, asi
+// que de momento esta es la unica forma de que el stack sepa "cual es mi IP"
+// para poder contestar ARP/ICMP.
+void net_config_set_ipv4(struct net_config *config, struct net_ipv4 address,
+                         struct net_ipv4 netmask, struct net_ipv4 gateway)
+{
+    if (!config)
+        return;
+    config->address = address;
+    config->netmask = netmask;
+    config->gateway = gateway;
+    config->ipv4_ready = 1;
+}
+
 int net_arp_learn(struct net_arp_entry *cache, size_t capacity,
                   const struct net_ipv4 *address, const struct net_mac *mac)
 {

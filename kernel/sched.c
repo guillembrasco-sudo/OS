@@ -146,9 +146,10 @@ struct sched_entity *sched_pick_next(uint32_t cpu, uint32_t numa_node)
 			best = cursor;
 		cursor = cursor->left;
 	}
-	if (best != 0)
+	if (best != 0) {
 		spinlock_release_irqrestore(&runqueue_locks[queue], flags);
 		return best;
+	}
 	cursor = run_trees[queue];
 	while (cursor != 0 && cursor->left != 0)
 		cursor = cursor->left;

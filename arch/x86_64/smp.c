@@ -60,8 +60,7 @@ uint32_t smp_online_cpus(void)
 int smp_start_secondary(uint8_t apic_id, uint8_t startup_vector)
 {
 	if (apic_id == (uint8_t)(lapic_read(0x20) >> 24) ||
-	    startup_vector == 0 || startup_vector >= 0x100 ||
-	    !lapic_is_ready())
+	    startup_vector == 0 || !lapic_is_ready())
 		return -1;
 	if (lapic_send_init(apic_id) != 0 ||
 	    lapic_send_startup(apic_id, startup_vector) != 0 ||

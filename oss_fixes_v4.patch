@@ -1,0 +1,318 @@
+diff --git a/arch/x86_64/idt.c b/arch/x86_64/idt.c
+index 7af33a9..346b6b8 100644
+--- a/arch/x86_64/idt.c
++++ b/arch/x86_64/idt.c
+@@ -1,6 +1,5 @@
+ #include "idt.h"
+ #include <stdint.h>
+-#include <kernel/panic.h>
+ 
+ #define IDT_ENTRIES 256
+ 
+@@ -82,9 +81,4 @@ void idt_init(void) {
+ 
+     // Cargar la IDT usando lidt
+     __asm__ __volatile__("lidt %0" : : "m"(idt_ptr));
+-}
+-
+-// Manejador en C invocado desde el stub en Ensamblador
+-void exception_handler(uint64_t vector, uint64_t error_code) {
+-    panic("Excepcion no manejada: vector=%lu error_code=0x%lx", vector, error_code);
+ }
+\ No newline at end of file
+diff --git a/arch/x86_64/smp.c b/arch/x86_64/smp.c
+index 04e2d3a..f5c54bc 100644
+--- a/arch/x86_64/smp.c
++++ b/arch/x86_64/smp.c
+@@ -60,8 +60,7 @@ uint32_t smp_online_cpus(void)
+ int smp_start_secondary(uint8_t apic_id, uint8_t startup_vector)
+ {
+ 	if (apic_id == (uint8_t)(lapic_read(0x20) >> 24) ||
+-	    startup_vector == 0 || startup_vector >= 0x100 ||
+-	    !lapic_is_ready())
++	    startup_vector == 0 || !lapic_is_ready())
+ 		return -1;
+ 	if (lapic_send_init(apic_id) != 0 ||
+ 	    lapic_send_startup(apic_id, startup_vector) != 0 ||
+diff --git a/drivers/net/dispatch.c b/drivers/net/dispatch.c
+index a433621..b8cc61e 100644
+--- a/drivers/net/dispatch.c
++++ b/drivers/net/dispatch.c
+@@ -12,6 +12,89 @@ static uint16_t read_be16(uint16_t value)
+     return (uint16_t)((value >> 8) | (value << 8));
+ }
+ 
++static void build_ethernet_header(struct net_ethernet_header *ethernet,
++                                  struct net_mac destination,
++                                  struct net_mac source, uint16_t ethertype)
++{
++    ethernet->destination = destination;
++    ethernet->source = source;
++    ethernet->ethertype = read_be16(ethertype); // read_be16 es su propia inversa
++}
++
++// Construye y envia una respuesta ARP cuando 'request' es un ARP request
++// dirigido a nuestra IP (runtime->config.address). No hace nada si no
++// tenemos IPv4 configurada (net_config_set_ipv4) o si la peticion no es
++// para nosotros.
++static void handle_arp_request(struct net_runtime *runtime, net_device *device,
++                               const struct net_arp_ipv4 *request)
++{
++    uint8_t reply_frame[sizeof(struct net_ethernet_header) + sizeof(struct net_arp_ipv4)];
++    struct net_ethernet_header *ethernet = (struct net_ethernet_header *)reply_frame;
++    struct net_arp_ipv4 *reply = (struct net_arp_ipv4 *)(reply_frame + sizeof(*ethernet));
++
++    if (!runtime->config.ipv4_ready || !device->transmit ||
++        read_be16(request->operation) != NET_ARP_OPERATION_REQUEST ||
++        memcmp(request->target_ip.bytes, runtime->config.address.bytes, 4) != 0)
++        return;
++
++    build_ethernet_header(ethernet, request->sender_mac, device->mac, ETHERTYPE_ARP);
++    reply->hardware_type = request->hardware_type;
++    reply->protocol_type = request->protocol_type;
++    reply->hardware_length = NET_MAC_LENGTH;
++    reply->protocol_length = 4;
++    reply->operation = read_be16(NET_ARP_OPERATION_REPLY);
++    reply->sender_mac = device->mac;
++    reply->sender_ip = runtime->config.address;
++    reply->target_mac = request->sender_mac;
++    reply->target_ip = request->sender_ip;
++
++    device->transmit(device, reply_frame, sizeof(reply_frame));
++}
++
++// Construye y envia una respuesta ICMP echo (pong) para un echo request
++// (ping), copiando el payload tal cual exige el protocolo. length es el
++// tamano total de la trama Ethernet recibida.
++static void handle_icmp_echo(struct net_runtime *runtime, net_device *device,
++                             const struct net_ethernet_header *request_ethernet,
++                             const struct net_ipv4_header *request_ip,
++                             size_t length)
++{
++    size_t ip_header_length = (size_t)(request_ip->version_ihl & 0x0f) * 4;
++    size_t icmp_offset = sizeof(*request_ethernet) + ip_header_length;
++    size_t icmp_length = length - icmp_offset;
++    const struct net_icmp_header *request_icmp =
++        (const struct net_icmp_header *)((const uint8_t *)request_ethernet + icmp_offset);
++    uint8_t reply_frame[1514]; // MTU maximo de Ethernet + cabecera, suficiente para un ping normal
++    struct net_ethernet_header *reply_ethernet;
++    struct net_ipv4_header *reply_ip;
++    struct net_icmp_header *reply_icmp;
++
++    if (!device->transmit || icmp_length < sizeof(*request_icmp) ||
++        request_icmp->type != NET_ICMP_TYPE_ECHO_REQUEST ||
++        sizeof(reply_frame) < icmp_offset + icmp_length)
++        return;
++
++    memcpy(reply_frame, request_ethernet, icmp_offset + icmp_length);
++    reply_ethernet = (struct net_ethernet_header *)reply_frame;
++    reply_ip = (struct net_ipv4_header *)(reply_frame + sizeof(*reply_ethernet));
++    reply_icmp = (struct net_icmp_header *)(reply_frame + icmp_offset);
++
++    build_ethernet_header(reply_ethernet, request_ethernet->source, device->mac, ETHERTYPE_IPV4);
++    reply_ip->source = request_ip->destination;
++    reply_ip->destination = request_ip->source;
++    reply_ip->ttl = 64;
++    reply_ip->checksum = 0;
++    reply_ip->checksum = read_be16(net_checksum(reply_ip, ip_header_length));
++
++    reply_icmp->type = NET_ICMP_TYPE_ECHO_REPLY;
++    reply_icmp->code = 0;
++    reply_icmp->checksum = 0;
++    reply_icmp->checksum = read_be16(net_checksum(reply_icmp, icmp_length));
++
++    device->transmit(device, reply_frame, icmp_offset + icmp_length);
++    runtime->stats.icmp_replies_sent++;
++}
++
+ void net_runtime_init(struct net_runtime *runtime)
+ {
+     if (!runtime)
+@@ -42,6 +125,7 @@ int net_runtime_receive(struct net_runtime *runtime, net_device *device,
+                           &arp->sender_ip, &arp->sender_mac) != 0)
+             goto dropped;
+         runtime->stats.arp_frames++;
++        handle_arp_request(runtime, device, arp);
+         return 0;
+     }
+     if (ethertype == ETHERTYPE_IPV4) {
+@@ -64,6 +148,8 @@ int net_runtime_receive(struct net_runtime *runtime, net_device *device,
+                                       length - sizeof(*ethernet) - payload_offset))
+                 goto dropped;
+             runtime->stats.udp_frames++;
++        } else if (ipv4->protocol == IP_PROTOCOL_ICMP) {
++            handle_icmp_echo(runtime, device, ethernet, ipv4, length);
+         }
+         return 0;
+     }
+diff --git a/drivers/net/protocols.c b/drivers/net/protocols.c
+index 61ee7fb..b64fef1 100644
+--- a/drivers/net/protocols.c
++++ b/drivers/net/protocols.c
+@@ -16,6 +16,22 @@ void net_protocols_init(struct net_config *config)
+         memset(config, 0, sizeof(*config));
+ }
+ 
++// Configura una IPv4 estatica para el runtime. El cliente DHCP (net_dhcp_*)
++// ya tiene el estado necesario para negociarla dinamicamente, pero nada en
++// dispatch.c dispara todavia una peticion DHCP real al recibir una trama, asi
++// que de momento esta es la unica forma de que el stack sepa "cual es mi IP"
++// para poder contestar ARP/ICMP.
++void net_config_set_ipv4(struct net_config *config, struct net_ipv4 address,
++                         struct net_ipv4 netmask, struct net_ipv4 gateway)
++{
++    if (!config)
++        return;
++    config->address = address;
++    config->netmask = netmask;
++    config->gateway = gateway;
++    config->ipv4_ready = 1;
++}
++
+ int net_arp_learn(struct net_arp_entry *cache, size_t capacity,
+                   const struct net_ipv4 *address, const struct net_mac *mac)
+ {
+diff --git a/include/drivers/net_dispatch.h b/include/drivers/net_dispatch.h
+index a6dd765..7c239a3 100644
+--- a/include/drivers/net_dispatch.h
++++ b/include/drivers/net_dispatch.h
+@@ -11,6 +11,7 @@ struct net_stats {
+     uint64_t ipv6_frames;
+     uint64_t tcp_frames;
+     uint64_t udp_frames;
++    uint64_t icmp_replies_sent;
+ };
+ 
+ struct net_runtime {
+diff --git a/include/drivers/net_protocols.h b/include/drivers/net_protocols.h
+index d91c69a..6f6693e 100644
+--- a/include/drivers/net_protocols.h
++++ b/include/drivers/net_protocols.h
+@@ -60,6 +60,8 @@ struct net_socket {
+ };
+ 
+ void net_protocols_init(struct net_config *config);
++void net_config_set_ipv4(struct net_config *config, struct net_ipv4 address,
++                         struct net_ipv4 netmask, struct net_ipv4 gateway);
+ int net_arp_learn(struct net_arp_entry *cache, size_t capacity,
+                   const struct net_ipv4 *address, const struct net_mac *mac);
+ const struct net_mac *net_arp_lookup(const struct net_arp_entry *cache,
+diff --git a/include/drivers/net_stack.h b/include/drivers/net_stack.h
+index 03b6687..f228640 100644
+--- a/include/drivers/net_stack.h
++++ b/include/drivers/net_stack.h
+@@ -93,6 +93,20 @@ struct net_udp_header {
+     uint16_t checksum;
+ };
+ 
++struct net_icmp_header {
++    uint8_t type;
++    uint8_t code;
++    uint16_t checksum;
++    uint16_t identifier;
++    uint16_t sequence;
++};
++
++#define NET_ARP_OPERATION_REQUEST 1
++#define NET_ARP_OPERATION_REPLY   2
++#define NET_ICMP_TYPE_ECHO_REQUEST 8
++#define NET_ICMP_TYPE_ECHO_REPLY   0
++#define IP_PROTOCOL_ICMP 1
++
+ #pragma pack(pop)
+ 
+ void net_device_init(net_device *device, struct net_mac mac,
+diff --git a/include/kernel/interrupt.h b/include/kernel/interrupt.h
+index 6fbb48c..c723877 100644
+--- a/include/kernel/interrupt.h
++++ b/include/kernel/interrupt.h
+@@ -18,5 +18,6 @@ typedef void (*isr_handler_t)(registers_t *regs);
+ 
+ void isr_register_handler(uint8_t int_no, isr_handler_t handler);
+ void isr_common_dispatch(registers_t *regs); // llamado desde el stub asm
++void isr_install_defaults(void); // registra los handlers por defecto (ej. #PF)
+ 
+ #endif // INTERRUPT_H
+\ No newline at end of file
+diff --git a/kernel/main.c b/kernel/main.c
+index 9214253..8ba2514 100644
+--- a/kernel/main.c
++++ b/kernel/main.c
+@@ -14,6 +14,7 @@
+ #include <drivers/net_dispatch.h>
+ #include <arch/x86_64/idt.h>
+ #include <arch/x86_64/gdt.h>
++#include <kernel/interrupt.h>
+ #include <kernel/tss.h>
+ #include <mm/pmm.h>
+ #include <mm/vmm.h>
+@@ -76,6 +77,7 @@ void kmain(uint64_t multiboot_magic, uint64_t multiboot_info_addr)
+ 	init_gdt();
+ 	tss_init((uint64_t)stack_top);
+ 	idt_init();
++	isr_install_defaults();
+ 	syscall_init();
+ 
+ 	uint64_t mmap_addr = 0;
+@@ -131,6 +133,16 @@ void kmain(uint64_t multiboot_magic, uint64_t multiboot_info_addr)
+ 	rcu_init();
+ 	pci_scan();
+ 	net_runtime_init(&net_runtime);
++	// IP estatica temporal (== la que QEMU con red "user" asigna por
++	// defecto al invitado) para poder probar ARP/ICMP de verdad ahora
++	// mismo. net_dhcp_start()/net_dhcp_handle_offer() (drivers/net/protocols.c)
++	// ya implementan el estado de un cliente DHCP real, pero nada en
++	// dispatch.c dispara todavia una peticion DHCP al recibir una trama -
++	// sigue siendo trabajo pendiente.
++	net_config_set_ipv4(&net_runtime.config,
++	                     (struct net_ipv4){{10, 0, 2, 15}},
++	                     (struct net_ipv4){{255, 255, 255, 0}},
++	                     (struct net_ipv4){{10, 0, 2, 2}});
+ 	if (pci_device_count() == 0)
+ 		kprintf("[PCI] no devices found\n");
+ 	else {
+diff --git a/kernel/sched.c b/kernel/sched.c
+index 544d261..a41fe9f 100644
+--- a/kernel/sched.c
++++ b/kernel/sched.c
+@@ -146,9 +146,10 @@ struct sched_entity *sched_pick_next(uint32_t cpu, uint32_t numa_node)
+ 			best = cursor;
+ 		cursor = cursor->left;
+ 	}
+-	if (best != 0)
++	if (best != 0) {
+ 		spinlock_release_irqrestore(&runqueue_locks[queue], flags);
+ 		return best;
++	}
+ 	cursor = run_trees[queue];
+ 	while (cursor != 0 && cursor->left != 0)
+ 		cursor = cursor->left;
+diff --git a/lib/string.c b/lib/string.c
+index f2d76af..bdfcd0f 100644
+--- a/lib/string.c
++++ b/lib/string.c
+@@ -24,3 +24,13 @@ size_t strlen(const char *string)
+ 		++length;
+ 	return length;
+ }
++
++int memcmp(const void *left, const void *right, size_t length)
++{
++	const unsigned char *left_bytes = left;
++	const unsigned char *right_bytes = right;
++	for (size_t index = 0; index < length; ++index)
++		if (left_bytes[index] != right_bytes[index])
++			return (int)left_bytes[index] - (int)right_bytes[index];
++	return 0;
++}
+diff --git a/lib/string.h b/lib/string.h
+index 5d75b42..f440184 100644
+--- a/lib/string.h
++++ b/lib/string.h
+@@ -10,4 +10,6 @@ void *memset(void *destination, int value, size_t length);
+ 
+ size_t strlen(const char *string);
+ 
++int memcmp(const void *left, const void *right, size_t length);
++
+ #endif // STRING_H
