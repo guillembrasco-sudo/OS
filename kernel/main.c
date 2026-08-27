@@ -14,6 +14,7 @@
 #include <drivers/net_dispatch.h>
 #include <arch/x86_64/idt.h>
 #include <arch/x86_64/gdt.h>
+#include <kernel/interrupt.h>
 #include <kernel/tss.h>
 #include <mm/pmm.h>
 #include <mm/vmm.h>
@@ -76,6 +77,7 @@ void kmain(uint64_t multiboot_magic, uint64_t multiboot_info_addr)
 	init_gdt();
 	tss_init((uint64_t)stack_top);
 	idt_init();
+	isr_install_defaults();
 	syscall_init();
 
 	uint64_t mmap_addr = 0;
