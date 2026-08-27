@@ -1,6 +1,5 @@
 #include "idt.h"
 #include <stdint.h>
-#include <kernel/panic.h>
 
 #define IDT_ENTRIES 256
 
@@ -82,9 +81,4 @@ void idt_init(void) {
 
     // Cargar la IDT usando lidt
     __asm__ __volatile__("lidt %0" : : "m"(idt_ptr));
-}
-
-// Manejador en C invocado desde el stub en Ensamblador
-void exception_handler(uint64_t vector, uint64_t error_code) {
-    panic("Excepcion no manejada: vector=%lu error_code=0x%lx", vector, error_code);
 }

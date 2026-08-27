@@ -18,5 +18,6 @@ typedef void (*isr_handler_t)(registers_t *regs);
 
 void isr_register_handler(uint8_t int_no, isr_handler_t handler);
 void isr_common_dispatch(registers_t *regs); // llamado desde el stub asm
+void isr_install_defaults(void); // registra los handlers por defecto (ej. #PF)
 
 #endif // INTERRUPT_H
