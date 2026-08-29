@@ -21,6 +21,10 @@ int process_create_user(struct process *process, uintptr_t entry,
 	process->pid = next_process_id++;
 	process->user_entry = entry;
 	process->user_stack = user_stack;
+	process->heap_start = USER_HEAP_START_DEFAULT;
+    process->heap_end   = USER_HEAP_START_DEFAULT; // Inicialmente brk apunta a heap_start (0 bytes mapeados)
+    process->heap_limit = USER_HEAP_START_DEFAULT + USER_HEAP_MAX_SIZE;
+	process->mmap_next  = USER_MMAP_START_DEFAULT;
 	uint64_t stack_page = pmm_alloc_page();
 	if (!stack_page || paging_map_page_in_space(
 			process->pml4_physical, user_stack - USER_PAGE_SIZE,

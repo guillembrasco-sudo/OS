@@ -1,5 +1,8 @@
-md/*
-build/*
+md/
+build/
+
+.vs/
+.vscode/
 
 kernel.iso
 kernel.bin
