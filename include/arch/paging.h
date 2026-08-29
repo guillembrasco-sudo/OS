@@ -63,6 +63,9 @@ int paging_map_page_in_space(uint64_t pml4_physical,
                              uint64_t virtual_address,
                              uint64_t physical_address,
                              uint64_t flags);
+int paging_unmap_page_in_space(uint64_t pml4_physical, uint64_t virtual_address);
 int paging_activate_space(uint64_t pml4_physical);
+
+uint64_t paging_translate_in_space(uint64_t pml4_physical, uint64_t virtual_address);
 
 #endif // ARCH_PAGING_H

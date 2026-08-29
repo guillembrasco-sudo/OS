@@ -27,6 +27,9 @@
 #include <kernel/window_system.h>
 #include <kernel/smp.h>
 #include <lib/printf.h>
+#include <fs/ramfs.h>
+#include <fs/dcache.h>
+#include <fs/file.h>
 
 // Layout de multiboot_info_t (Multiboot 1) para localizar el mapa de
 // memoria. boot/boot.asm arranca con la cabecera clasica Multiboot1
@@ -128,7 +131,10 @@ void kmain(uint64_t multiboot_magic, uint64_t multiboot_info_addr)
 	else
 		kprintf("[DISPLAY] framebuffer console ready\n");
 	vfs_init();
+	ramfs_init();
 	devfs_init();
+	dcache_init();
+	file_table_init();
 	slab_init();
 	rcu_init();
 	pci_scan();

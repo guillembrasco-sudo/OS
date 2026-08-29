@@ -50,6 +50,11 @@ static int path_equal(const char *left, const char *right)
 	return *left == 0 && *right == 0;
 }
 
+static struct vfs_node dev_dir;
+static const struct vfs_operations dev_dir_operations = {
+	0, 0, vfs_generic_readdir, 0, 0, 0, 0, 0
+};
+
 int devfs_init(void)
 {
 	card0.name = "card0";
@@ -62,6 +67,19 @@ int devfs_init(void)
 	dri_dir.mode = 0555;
 	dri_dir.operations = &directory_operations;
 	card_owner = 0;
+
+	dev_dir.name = "dev";
+	dev_dir.mode = 0555;
+	dev_dir.type = VFS_TYPE_DIRECTORY;
+	dev_dir.operations = &dev_dir_operations;
+	dri_dir.type = VFS_TYPE_DIRECTORY;
+	card0.type = VFS_TYPE_DEVICE;
+	render128.type = VFS_TYPE_DEVICE;
+
+	vfs_attach_child(vfs_root(), &dev_dir);
+	vfs_attach_child(&dev_dir, &dri_dir);
+	vfs_attach_child(&dri_dir, &card0);
+	vfs_attach_child(&dri_dir, &render128);
 	return 0;
 }
 

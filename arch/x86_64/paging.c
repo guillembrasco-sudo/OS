@@ -79,6 +79,21 @@ static inline void flush_tlb_full(void) {
 
 static int direct_map_ready = 0;
 
+uint64_t paging_translate_in_space(uint64_t pml4_physical, uint64_t virtual_address)
+{
+    uint64_t previous_cr3;
+    uint64_t result;
+
+    if (!direct_map_ready || !pml4_physical)
+        return (uint64_t)-1;
+
+    previous_cr3 = read_cr3();
+    write_cr3(pml4_physical);
+    result = paging_translate(virtual_address);
+    write_cr3(previous_cr3);
+    return result;
+}
+
 // --- Pool estatico de tablas para el arranque del mapa directo -------------
 // Dimensionado para poder cubrir PAGING_DIRECT_MAP_MAX_BYTES (64 GiB) con
 // paginas de 2MiB: 1 PDPT + hasta 64 PD (cada PD cubre 1 GiB) = 65 tablas.
@@ -322,6 +337,21 @@ int paging_map_page_in_space(uint64_t pml4_physical,
                              flags | PAGING_USER);
     write_cr3(previous_cr3);
     return result;
+}
+
+int paging_unmap_page_in_space(uint64_t pml4_physical, uint64_t virtual_address)
+{
+	uint64_t previous_cr3;
+	int result;
+
+	if (!direct_map_ready || !pml4_physical ||
+	    (virtual_address % PAGE_SIZE_4K) != 0)
+		return -1;
+	previous_cr3 = read_cr3();
+	write_cr3(pml4_physical);
+	result = paging_unmap_page(virtual_address);
+	write_cr3(previous_cr3);
+	return result;
 }
 
 int paging_activate_space(uint64_t pml4_physical)
